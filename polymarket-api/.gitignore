@@ -1,0 +1,15 @@
+{
+    "polymarket_api",
+    "polymarket_api/__pycache__",
+    "polymarket_api/tests",
+    ".env",
+    "*.pyc",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".git",
+    ".gitignore",
+    ".dockerignore",
+    "Dockerfile",
+    "docker-compose.yml"
+}

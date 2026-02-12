@@ -1,0 +1,16 @@
+{
+  "name": "simmer-sdk-helpers",
+  "version": "1.0.0",
+  "description": "Node.js helpers for Simmer SDK (Solana signing)",
+  "private": true,
+  "scripts": {
+    "sign-solana": "node scripts/sign-solana.js"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.95.0",
+    "bs58": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
