@@ -13,7 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.utils.logger import setup_logging, get_logger
 from app.database import connect_to_mongo, close_mongo_connection
-from app.routes import health_router, markets_router, events_router, orders_router, wallet_router, webhook_router, websocket_router
+from app.routes import health_router, markets_router, events_router, orders_router, wallet_router, webhook_router, websocket_router, advanced_router
 
 # Setup logging
 setup_logging()
@@ -70,6 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(orders_router, prefix="/api/v1")
     app.include_router(wallet_router, prefix="/api/v1")
     app.include_router(webhook_router, prefix="/api/v1")
+    app.include_router(advanced_router, prefix="/api/v1")
     app.include_router(websocket_router)
     
     return app
