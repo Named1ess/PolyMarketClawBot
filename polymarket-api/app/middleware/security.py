@@ -188,13 +188,16 @@ ip_whitelist = IPWhitelist()
 
 class IPWhitelistMiddleware(BaseHTTPMiddleware):
     """
-    Secure IP Whitelist Middleware
+    Secure IP Whitelist Middleware - Anti-Spoofing Mode
     
-    Security Strategy:
-    1. If no trusted proxies configured: Use direct connection IP only
-    2. If trusted proxies configured: 
+    Security Strategy (User's Choice):
+    1. If TRUSTED_PROXIES is EMPTY: Use direct connection IP ONLY (safest)
+       - Ignores X-Forwarded-For and X-Real-IP completely
+       - Cannot be spoofed by client headers
+    
+    2. If TRUSTED_PROXIES is configured:
        - Only trust X-Forwarded-For from trusted proxies
-       - Validate the chain doesn't contain suspicious patterns
+       - Validates proxy chain to prevent spoofing
     """
     
     def __init__(self, app):
@@ -206,15 +209,14 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
         if request.url.path in ["/health", "/status", "/docs", "/redoc", "/openapi.json"]:
             return await call_next(request)
         
-        # Get client IP with spoofing detection
+        # Get client IP with strict anti-spoofing
         client_ip, ip_source = self._get_client_ip(request)
         
-        # Log IP source for debugging
+        # Log for debugging
         logger.debug(f"Client IP: {client_ip} (source: {ip_source})")
         
         # Check whitelist
         if not self.whitelist.is_allowed(client_ip):
-            # Log detailed info about blocked request
             logger.warning(
                 f"Blocked request from unauthorized IP: {client_ip} "
                 f"(source: {ip_source}, path: {request.url.path})"
@@ -228,7 +230,7 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
                 }
             )
         
-        # Add IP to request state for use in routes
+        # Add IP to request state
         request.state.client_ip = client_ip
         request.state.ip_source = ip_source
         
@@ -236,90 +238,82 @@ class IPWhitelistMiddleware(BaseHTTPMiddleware):
     
     def _get_client_ip(self, request: Request) -> Tuple[str, str]:
         """
-        Get client IP with spoofing detection.
+        Get client IP with anti-spoofing protection.
         
         Returns:
             Tuple of (ip_address, source_description)
         """
         self.whitelist.load_from_config()
         
-        # Get direct connection IP
+        # Get direct connection IP (from the TCP connection itself)
         direct_ip = request.client.host if request.client else "unknown"
+        
+        # Check if any trusted proxies are configured
+        has_trusted_proxies = bool(
+            self.whitelist._trusted_proxies or self.whitelist._trusted_networks
+        )
+        
+        if not has_trusted_proxies:
+            # === NO TRUSTED PROXIES: Use direct connection ONLY ===
+            # This is the safest mode - ignores all X-* headers
+            # Client CANNOT spoof their IP
+            
+            # Log and ignore any X-Forwarded-For attempts
+            forwarded = request.headers.get("X-Forwarded-For")
+            real_ip = request.headers.get("X-Real-IP")
+            
+            if forwarded or real_ip:
+                logger.debug(
+                    f"Ignoring client headers (no trusted proxies): "
+                    f"X-Forwarded-For='{forwarded}', X-Real-IP='{real_ip}'"
+                )
+            
+            return direct_ip, "direct_connection_no_proxy"
+        
+        # === TRUSTED PROXIES CONFIGURED ===
+        # Only trust X-Forwarded-For if it comes through a trusted proxy
         
         # Check X-Forwarded-For header
         forwarded = request.headers.get("X-Forwarded-For")
         real_ip_header = request.headers.get("X-Real-IP")
         
-        # If no trusted proxies configured, use direct connection only
-        if not self.whitelist._trusted_proxies:
-            if forwarded:
-                logger.debug(
-                    f"X-Forwarded-For ignored (no trusted proxies configured): {forwarded}"
-                )
-            return direct_ip, "direct_connection"
-        
-        # Validate X-Forwarded-For if present
         if forwarded:
-            # Get the first IP in the chain (original client)
+            # Parse all IPs in the chain
             forwarded_ips = [ip.strip() for ip in forwarded.split(",")]
-            first_ip = forwarded_ips[0]
+            first_ip = forwarded_ips[0]  # Original client
             
-            # Check if the second IP (if exists) is a trusted proxy
-            # This validates the chain was set by our proxy
             if len(forwarded_ips) >= 2:
+                # Client -> Proxy1 -> Proxy2 -> ... -> Our Server
                 second_ip = forwarded_ips[1]
+                
                 if self.whitelist.is_trusted_proxy(second_ip):
-                    # Valid chain: client -> trusted_proxy -> our_server
-                    return first_ip, "x_forwarded_for_validated"
+                    # Valid chain through trusted proxy
+                    return first_ip, "x_forwarded_for_chain_valid"
                 else:
-                    # Suspicious: client says they came through untrusted proxy
+                    # Suspicious: claims to come through untrusted proxy
                     logger.warning(
-                        f"Spoofing attempt: X-Forwarded-For claims via untrusted proxy "
-                        f"{second_ip}, using direct IP {direct_ip}"
+                        f"Spoofing detected: X-Forwarded-For chain contains "
+                        f"untrusted proxy {second_ip}, falling back to direct IP"
                     )
-                    return direct_ip, "spoofing_detected_rejected"
+                    return direct_ip, "spoofing_rejected_using_direct"
             else:
-                # Only one IP in X-Forwarded-For, but we expect proxy chain
-                # This might be spoofed
+                # Only one IP in chain, but we expect proxy
                 if self.whitelist.is_trusted_proxy(direct_ip):
-                    # Direct connection is from our proxy, accept X-Forwarded-For
+                    # Our server is directly connected from trusted proxy
                     return first_ip, "x_forwarded_for_from_trusted_proxy"
                 else:
-                    # Suspicious single IP without proxy chain
+                    # Suspicious - single IP without proxy chain
                     logger.warning(
                         f"Suspicious X-Forwarded-For (no proxy chain): {forwarded}"
                     )
-                    return direct_ip, "spoofing_detected_no_chain"
+                    return direct_ip, "spoofing_rejected_using_direct"
         
-        # Check X-Real-IP header (set by Nginx etc.)
+        # Check X-Real-IP (set by Nginx real_ip_header)
         if real_ip_header and self.whitelist.is_trusted_proxy(direct_ip):
             return real_ip_header.strip(), "x_real_ip_validated"
         
         # Fall back to direct connection
-        return direct_ip, "direct_connection"
-    
-    def _is_suspicious_forwarded(self, forwarded: str) -> bool:
-        """Detect suspicious X-Forwarded-For patterns"""
-        ips = [ip.strip() for ip in forwarded.split(",")]
-        
-        # Check for private IPs in the chain (possible spoofing)
-        private_prefixes = ["10.", "172.16.", "172.17.", "172.18.", "172.19.", 
-                           "172.20.", "172.21.", "172.22.", "172.23.", "172.24.",
-                           "172.25.", "172.26.", "172.27.", "172.28.", "172.29.",
-                           "172.30.", "172.31.", "192.168.", "127."]
-        
-        for ip in ips:
-            for prefix in private_prefixes:
-                if ip.startswith(prefix):
-                    # Private IP in X-Forwarded-For - likely spoofed
-                    return True
-        
-        # Check for multiple IPs claiming to be the client
-        if len(set(ips)) < len(ips):
-            # Duplicate IPs - suspicious
-            return True
-        
-        return False
+        return direct_ip, "direct_connection_fallback"
 
 
 class APIKeyAuth:

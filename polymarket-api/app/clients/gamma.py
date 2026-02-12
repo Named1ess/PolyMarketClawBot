@@ -104,12 +104,33 @@ class GammaClient:
                 logger.error(f"Error fetching event {event_id}: {e}")
                 return None
     
+    def _safe_float(self, value, default=None):
+        """Safely convert value to float, handling string arrays and other edge cases"""
+        if value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            # Handle edge cases like '[' or '[]'
+            if value in ('[', ']', '', 'nan', 'inf', '-inf'):
+                return default
+            try:
+                return float(value)
+            except ValueError:
+                return default
+        # Handle lists (take first element if numeric)
+        if isinstance(value, list):
+            if len(value) > 0:
+                return self._safe_float(value[0], default)
+            return default
+        return default
+
     def map_api_to_market(self, market_data: Dict[str, Any], token_id: str = "") -> MarketDetail:
         """Map API response to MarketDetail model"""
         try:
             outcome_prices = market_data.get("outcomePrices", [])
             clob_token_ids = market_data.get("clobTokenIds", [])
-            
+
             return MarketDetail(
                 id=str(market_data.get("id", "")),
                 question=market_data.get("question", ""),
@@ -123,10 +144,10 @@ class GammaClient:
                 funded=market_data.get("funded", False),
                 outcomes=market_data.get("outcomes", []),
                 outcome_prices=[float(p) for p in outcome_prices] if outcome_prices else [],
-                volume=float(market_data.get("volume", 0)) if market_data.get("volume") else None,
-                spread=float(market_data.get("spread", 0)) if market_data.get("spread") else None,
-                rewards_min_size=float(market_data.get("rewardsMinSize", 0)) if market_data.get("rewardsMinSize") else None,
-                rewards_max_spread=float(market_data.get("rewardsMaxSpread", 0)) if market_data.get("rewardsMaxSpread") else None,
+                volume=self._safe_float(market_data.get("volume")),
+                spread=self._safe_float(market_data.get("spread")),
+                rewards_min_size=self._safe_float(market_data.get("rewardsMinSize")),
+                rewards_max_spread=self._safe_float(market_data.get("rewardsMaxSpread")),
                 clob_token_ids=[str(tid) for tid in clob_token_ids] if clob_token_ids else [],
                 tags=market_data.get("tags", []),
                 liquidity=market_data.get("liquidity"),
