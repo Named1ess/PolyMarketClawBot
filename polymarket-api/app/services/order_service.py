@@ -70,6 +70,8 @@ class OrderService:
             
         except Exception as e:
             logger.error(f"Error creating order: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e)

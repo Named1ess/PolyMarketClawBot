@@ -2,6 +2,8 @@
 
 一个基于 FastAPI 的 Polymarket 预测市场交易机器人 API，支持订单管理、市场数据、实时监控、交易限制、OpenClaw 集成等功能。
 
+> **重要更新**: API 凭证现在会自动从私钥派生！只需设置 `POLYGON_WALLET_PRIVATE_KEY`，重启 API 即可自动完成配置。
+
 ## 📋 目录
 
 - [功能特性](#功能特性)
@@ -260,6 +262,23 @@ MAX_POSITION_PER_MARKET=5000.0
 GET /health
 ```
 
+### 事件数据
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/events` | GET | 事件列表（支持筛选） |
+| `/events/{event_id}` | GET | 事件详情 |
+| `/events/active` | GET | 当前活跃事件 |
+
+**事件列表参数:**
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `limit` | int | 返回数量 (1-100) |
+| `offset` | int | 分页偏移 |
+| `active` | boolean | 活跃事件 |
+| `archived` | boolean | 归档事件 |
+| `featured` | boolean | 推荐事件 |
+
 ### 钱包操作
 
 | 端点 | 方法 | 描述 |
@@ -291,16 +310,78 @@ GET /health
 }
 ```
 
+### 事件数据
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/events` | GET | 事件列表 |
+| `/events/{event_id}` | GET | 事件详情 |
+| `/events/active` | GET | 当前活跃事件 |
+
+**使用示例:**
+```bash
+# 获取活跃事件
+curl "http://localhost:8000/api/v1/events?active=true&archived=false&limit=20"
+
+# 获取事件详情
+curl "http://localhost:8000/api/v1/events/{event_id}"
+```
+
 ### 市场数据
 
 | 端点 | 方法 | 描述 |
 |------|------|------|
-| `/markets` | GET | 市场列表 |
+| `/markets` | GET | 市场列表（支持高级筛选） |
+| `/markets/active` | GET | 当前活跃市场 |
+| `/markets/trending` | GET | 热门市场（按24h交易量） |
+| `/markets/ending-soon` | GET | 即将结束的市场 |
+| `/markets/sports` | GET | 体育相关市场 |
 | `/markets/{token_id}` | GET | 市场详情 |
 | `/markets/{token_id}/orderbook` | GET | 市场深度 |
 | `/markets/{token_id}/price` | GET | 当前价格 |
 | `/markets/{token_id}/price-history` | GET | 价格历史 |
 | `/markets/{token_id}/context` | GET | 市场上下文 |
+
+### 市场列表高级筛选
+
+**基础筛选:**
+```http
+GET /api/v1/markets?active=true&archived=false&closed=false&limit=20
+```
+
+**参数说明:**
+
+| 参数 | 类型 | 描述 |
+|------|------|------|
+| `limit` | int | 返回数量 (1-100, 默认: 50) |
+| `offset` | int | 分页偏移 |
+| `order` | string | 排序字段 (如: `volumeNum,endDate`) |
+| `ascending` | boolean | 升序/降序 |
+| `active` | boolean | 活跃市场 |
+| `archived` | boolean | 归档市场 |
+| `closed` | boolean | 已关闭市场 |
+| `volume_num_min` | float | 最小24h交易量 |
+| `liquidity_num_min` | float | 最小流动性 |
+| `end_date_min` | string | 结束日期最小值 (ISO 8601) |
+| `end_date_max` | string | 结束日期最大值 (ISO 8601) |
+
+**使用示例:**
+```bash
+# 获取当前活跃市场
+curl "http://localhost:8000/api/v1/markets?active=true&archived=false&closed=false"
+
+# 获取高交易量市场（排序）
+curl "http://localhost:8000/api/v1/markets?volume_num_min=10000&order=volumeNum&ascending=false"
+
+# 获取7天内结束的市场
+curl "http://localhost:8000/api/v1/markets?end_date_max=2026-02-19T00:00:00Z&order=endDate&ascending=true"
+
+# 获取热门推荐市场
+curl "http://localhost:8000/api/v1/markets/trending?limit=20&volume_num_min=1000"
+
+# 获取即将结束的市场
+curl "http://localhost:8000/api/v1/markets/ending-soon?days_ahead=7&limit=10"
+```
 
 ### 持仓与资产
 
@@ -766,6 +847,56 @@ polymarket-api/
 │       └── logger.py            # 日志配置
 │
 └── tests/                        # 测试文件
+```
+
+---
+
+## 🔧 常见问题排查
+
+### Q: 下单报错 "Size lower than the minimum: 5"
+
+**问题**: 订单金额小于最小限制
+**解决**: 增加订单金额至 $5 以上
+
+### Q: 下单报错 "market not found"
+
+**问题**: 使用了错误的 ID
+**解决**: 
+- 市场详情接口使用 `condition_id`
+- 下单接口使用 `token_id`（从 `market["tokens"][0]["token_id"]` 获取）
+
+### Q: 下单报错 "Unauthorized/Invalid api key"
+
+**问题**: API 凭证无效或未正确派生
+**解决**: 
+1. 确保 `POLYGON_WALLET_PRIVATE_KEY` 已设置
+2. 重启 API 服务器，凭证会自动重新派生
+3. 检查 `.env` 文件中的 `CLOB_API_KEY`, `CLOB_SECRET`, `CLOB_PASS_PHRASE` 是否已生成
+
+### Q: 市场数据都是旧数据（2020年）
+
+**问题**: API 默认返回历史数据
+**解决**: 使用过滤器参数
+```http
+GET /api/v1/markets/active?active=true&archived=false
+```
+
+### Q: MongoDB 连接失败
+
+**问题**: MongoDB 服务未启动
+**解决**: API 支持无 MongoDB 模式运行（缓存功能受限）
+
+### Q: 如何获取 Token ID
+
+**正确方式**:
+```json
+{
+  "tokens": [
+    {"token_id": "0x123...", "outcome": "Yes", "price": 0.45},
+    {"token_id": "0x456...", "outcome": "No", "price": 0.55}
+  ]
+}
+// 使用: market["tokens"][0]["token_id"]
 ```
 
 ---

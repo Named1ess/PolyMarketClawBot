@@ -2,14 +2,65 @@
 
 ## Overview
 
-This API is a FastAPI-based trading bot for Polymarket prediction markets on Polygon. It provides REST endpoints for trading, portfolio management, market data, and automated trading integration with OpenClaw.
+This API is a FastAPI-based trading bot for Polymarket prediction markets on Polygon. It provides REST endpoints for trading, portfolio management, market data, and automated trading integration.
 
-## Base Configuration
-
-- **Base URL**: `http://{HOST}:{PORT}/api/v1`
-- **Host**: Configurable via `API_HOST` (default: `0.0.0.0`)
-- **Port**: Configurable via `API_PORT` (default: `8000`)
+**Base URLs:**
+- **API**: `http://{HOST}:{PORT}/api/v1`
+- **Host**: Configurable via `HOST` (default: `0.0.0.0`)
+- **Port**: Configurable via `PORT` (default: `8000`)
 - **Health Check**: `GET /health`
+- **API Docs**: `GET /docs` (Swagger UI)
+
+---
+
+## API Credentials Setup (IMPORTANT)
+
+### Getting API Credentials
+
+**CRITICAL**: API credentials must be derived from your private key, not manually set!
+
+**Step 1: Ensure private key is set in `.env`**
+```bash
+POLYGON_WALLET_PRIVATE_KEY=0xyour_private_key_here
+```
+
+**Step 2: Start the API - credentials auto-derive on first run**
+```bash
+cd polymarket-api
+python main.py
+```
+
+The API will automatically:
+1. Use your private key to derive API credentials via `create_or_derive_api_creds()`
+2. Save credentials to `.env` for future use
+3. Initialize with Level 2 (trading) authentication
+
+**Step 3: Verify credentials**
+```python
+# Credentials are stored in .env as:
+CLOB_API_KEY=your_api_key
+CLOB_SECRET=your_secret
+CLOB_PASS_PHRASE=your_passphrase
+```
+
+### Required Environment Variables
+
+```bash
+# Wallet (REQUIRED for trading)
+POLYGON_WALLET_PRIVATE_KEY=0x...  # Your Polygon wallet private key
+WALLET_ADDRESS=0x...              # Optional: auto-derived from private key
+
+# CLOB Credentials (auto-derived, can be manually set)
+CLOB_API_KEY=                    # API key
+CLOB_SECRET=                      # API secret
+CLOB_PASS_PHRASE=                 # API passphrase
+
+# Gamma API
+GAMMA_API_URL=https://gamma-api.polymarket.com
+
+# MongoDB (optional - works without it)
+MONGODB_URI=mongodb://localhost:27017
+```
 
 ---
 
@@ -22,21 +73,18 @@ The API supports two authentication methods:
 #### 1. IP Whitelist (Recommended for server-to-server)
 
 ```bash
-# Environment variables
-ENABLE_IP_WHITELIST=true
-ALLOWED_IPS=203.0.113.50,10.0.0.0/16  # Comma-separated IPs/CIDR
-TRUSTED_PROXIES=                        # Nginx/proxy IPs if behind reverse proxy
+ENABLE_IP_WHITELIST=false  # Set to true to enable
+ALLOWED_IPS=               # Comma-separated IPs/CIDR
 ```
 
 #### 2. API Key Authentication
 
 ```bash
-# Environment variables
-ENABLE_API_KEY_AUTH=true
-API_KEYS=sk_live_key1,sk_live_key2      # Comma-separated keys
+ENABLE_API_KEY_AUTH=false
+API_KEYS=sk_live_key1,sk_live_key2
 ```
 
-**Usage**:
+**Usage:**
 ```http
 GET /api/v1/orders HTTP/1.1
 Host: server:8000
@@ -45,771 +93,371 @@ X-API-Key: sk_live_key1
 
 ---
 
-## Endpoints Reference
+## Markets API - Complete Reference
 
-### 1. Health Check
+### Get Markets with Advanced Filtering
 
 ```http
-GET /health
+GET /api/v1/markets
 ```
 
-Response:
-```json
-{
-  "status": "healthy",
-  "timestamp": "2026-02-12T10:30:00Z"
-}
-```
+**Advanced Query Parameters:**
 
----
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| **Pagination** | | |
+| `limit` | int | Number of markets (1-100, default: 50) |
+| `offset` | int | Pagination offset (default: 0) |
+| **Sorting** | | |
+| `order` | string | Fields to order by, comma-separated (e.g., `volumeNum,endDate`) |
+| `ascending` | boolean | Sort order: `true`=ascending, `false`=descending |
+| **ID Filters** | | |
+| `ids` | string | Comma-separated market IDs |
+| `slugs` | string | Comma-separated market slugs |
+| `clob_token_ids` | string | Comma-separated CLOB token IDs |
+| `condition_ids` | string | Comma-separated condition IDs |
+| **Numeric Ranges** | | |
+| `liquidity_num_min` | float | Minimum liquidity |
+| `liquidity_num_max` | float | Maximum liquidity |
+| `volume_num_min` | float | Minimum 24h volume |
+| `volume_num_max` | float | Maximum 24h volume |
+| **Date Ranges (ISO 8601)** | | |
+| `start_date_min` | string | Start date minimum (e.g., `2026-01-01T00:00:00Z`) |
+| `start_date_max` | string | Start date maximum |
+| `end_date_min` | string | End date minimum |
+| `end_date_max` | string | End date maximum (e.g., `2026-12-31T23:59:59Z`) |
+| **Status Filters** | | |
+| `active` | boolean | Filter by active status |
+| `archived` | boolean | Filter by archived status |
+| `closed` | boolean | Filter by closed status |
+| `featured` | boolean | Filter by featured status |
 
-### 2. Wallet Operations
+#### Quick Filters
 
-#### Get Wallet Address
+**Get ONLY Currently Active Markets:**
 ```http
-GET /api/v1/wallet/address
+GET /api/v1/markets/active?limit=50&volume_num_min=1000
 ```
 
-Response:
-```json
-{
-  "address": "0x1234..."
-}
-```
-
-#### Get USDC Balance
+**Get High Volume Markets:**
 ```http
-GET /api/v1/wallet/balance
+GET /api/v1/markets?volume_num_min=10000&order=volumeNum&ascending=false
 ```
 
-Response:
-```json
-{
-  "usdc_balance": 5000.50,
-  "usdc_balance_raw": "5000500000",
-  "wallet_address": "0x1234...",
-  "last_updated": "2026-02-12T10:30:00Z"
-}
-```
-
-#### Get Token Allowances
+**Get Markets Ending Soon:**
 ```http
-GET /api/v1/wallet/allowances
+GET /api/v1/markets/ending-soon?limit=20&days_ahead=7
 ```
 
-Response:
+**Response:**
 ```json
 {
-  "usdc_allowance_main": 1000000,
-  "usdc_allowance_neg_risk": 0,
-  "usdc_allowance_neg_risk_adapter": 0
-}
-```
-
-#### Approve Tokens for Trading
-```http
-POST /api/v1/wallet/approve
-```
-
-Response:
-```json
-{
-  "success": true,
-  "transactions": {
-    "usdc_main": "0xabc123...",
-    "usdc_neg_risk": "0xdef456..."
-  }
-}
-```
-
----
-
-### 3. Positions & Portfolio
-
-#### Get Positions
-```http
-GET /api/v1/positions
-```
-
-Response:
-```json
-{
-  "positions": [
+  "markets": [
     {
-      "token_id": "0x1234...",
-      "outcome": "YES",
-      "quantity": 100,
-      "avg_price": 0.65,
-      "current_price": 0.70,
-      "current_value": 70.0,
-      "unrealized_pnl": 5.0
+      "id": "123",
+      "question": "Will Bitcoin exceed $100k by end of 2026?",
+      "slug": "will-bitcoin-exceed-100k-by-end-of-2026",
+      "end_date": "2026-12-31T23:59:59Z",
+      "start_date": "2026-01-01T00:00:00Z",
+      "active": true,
+      "archived": false,
+      "closed": false,
+      "outcomes": ["Yes", "No"],
+      "outcome_prices": [0.45, 0.55],
+      "volume": 125000.50,
+      "volume_num": 125000.50,
+      "liquidity": 50000.00,
+      "liquidity_num": 50000.00,
+      "tokens": [
+        {"token_id": "0x123...", "outcome": "Yes", "price": 0.45},
+        {"token_id": "0x456...", "outcome": "No", "price": 0.55}
+      ],
+      "tags": ["Crypto", "Bitcoin"]
     }
-  ]
+  ],
+  "total": 50
 }
 ```
 
-#### Get Portfolio Summary
+### Pre-built Market Endpoints
+
+#### Get Active Markets
 ```http
-GET /api/v1/portfolio
+GET /api/v1/markets/active?limit=50&order=volumeNum&ascending=false&volume_num_min=1000
 ```
 
-Response:
-```json
-{
-  "total_positions_value": 500.0,
-  "total_realized_pnl": 150.0,
-  "total_unrealized_pnl": 25.0,
-  "positions_count": 3
-}
+#### Get Trending Markets
+```http
+GET /api/v1/markets/trending?limit=20&volume_num_min=1000
+```
+
+#### Get Markets Ending Soon
+```http
+GET /api/v1/markets/ending-soon?limit=20&days_ahead=7
+```
+
+#### Get Sports Markets
+```http
+GET /api/v1/markets/sports?limit=50&game_id=some_game_id
 ```
 
 ---
 
-### 4. Order Management
+### Get Market Details
+```http
+GET /api/v1/markets/{token_id}
+```
 
-#### Create Order
+### Get Order Book
+```http
+GET /api/v1/markets/{token_id}/orderbook
+```
+
+### Get Current Price
+```http
+GET /api/v1/markets/{token_id}/price?side=BUY
+```
+
+---
+
+## Order Placement (CRITICAL - Read This!)
+
+### Correct Order Flow
+
+```python
+import httpx
+
+BASE_URL = "http://localhost:8000/api/v1"
+
+# 1. GET markets with active=true to get valid markets
+response = httpx.get(f"{BASE_URL}/markets/active", params={
+    "limit": 10,
+    "order": "volumeNum",
+    "ascending": False
+}).json()
+
+# 2. Extract token_id from 'tokens' array (NOT 'clob_token_ids'!)
+for market in response["markets"]:
+    for token in market.get("tokens", []):
+        if token.get("outcome") == "Yes":
+            token_id = token["token_id"]
+            price = token["price"]
+            break
+
+# 3. Get market details (requires condition_id!)
+condition_id = market["condition_id"]
+market_detail = httpx.get(f"{BASE_URL}/markets/{token_id}").json()
+
+# 4. Place order (minimum amount: $5!)
+order = httpx.post(f"{BASE_URL}/orders", json={
+    "token_id": token_id,
+    "side": "BUY",        # or "SELL"
+    "amount": 5.0,       # MINIMUM $5!
+    "price": price,       # Price between 0.01 and 0.99
+    "order_type": "GTC"   # Good-Til-Cancelled
+}).json()
+```
+
+### Key Order Rules
+
+| Rule | Value |
+|------|-------|
+| **Minimum Order Amount** | $5.00 USD |
+| **Price Range** | 0.01 - 0.99 |
+| **Token ID Source** | `market["tokens"][i]["token_id"]` |
+| **Market ID for Details** | `market["condition_id"]` |
+| **Order Type** | `GTC` (Good-Til-Cancelled) |
+
+### Create Order Endpoint
+
 ```http
 POST /api/v1/orders
 Content-Type: application/json
 
 {
-  "token_id": "0xabcd...",
+  "token_id": "0xabc123...",
   "side": "BUY",
-  "amount": 100.0,
+  "amount": 5.0,
   "price": 0.50,
-  "order_type": "FOK"
+  "order_type": "GTC"
 }
 ```
 
-**Parameters**:
-- `token_id` (string, required): Market token ID from Polymarket URL
-- `side` (string, required): `BUY` or `SELL`
-- `amount` (number, required): Amount in USD
-- `price` (number, optional): Limit price (0.01-0.99). If not provided, uses market price
-- `order_type` (string, optional): `FOK` (Fill-or-Kill), `IOC` (Immediate-or-Cancel), `LIMIT`
+**Parameters:**
+- `token_id` (required): Market token ID from `market["tokens"][0]["token_id"]`
+- `side` (required): `BUY` or `SELL`
+- `amount` (required): Amount in USD (minimum: $5)
+- `price` (optional): Limit price (0.01 - 0.99)
+- `order_type` (optional): `GTC` (default)
 
-Response:
+**Response:**
 ```json
 {
   "success": true,
-  "order_id": "uuid-string",
-  "status": "OPEN"
+  "order_id": "0xb6fd72c3207d3035baa5311fb9d5ec1bec098a36e1e02ef4ff81c3cfbbf11c2e",
+  "status": "live"
 }
 ```
 
-#### List Orders
-```http
-GET /api/v1/orders?limit=20&offset=0&status=OPEN&token_id=0xabcd...
-```
+### Order Status Check
 
-**Query Parameters**:
-- `limit` (int): Number of orders to return (1-100, default: 20)
-- `offset` (int): Pagination offset (default: 0)
-- `status` (string, optional): Filter by status (`OPEN`, `FILLED`, `CANCELLED`, `FAILED`)
-- `token_id` (string, optional): Filter by market
-
-Response:
-```json
-{
-  "orders": [...],
-  "total": 50,
-  "page": 1,
-  "page_size": 20
-}
-```
-
-#### Get Order Details
 ```http
 GET /api/v1/orders/{order_id}
 ```
 
-#### Cancel Order
+**Response:**
+```json
+{
+  "id": "0xb6fd72c...",
+  "status": "LIVE",
+  "side": "BUY",
+  "price": 0.88,
+  "original_size": "5",
+  "size_matched": "0",
+  "filled_size": "0"
+}
+```
+
+### Cancel Order
 ```http
 DELETE /api/v1/orders/{order_id}
 ```
 
-#### Cancel All Orders
+### Get Open Orders
 ```http
-DELETE /api/v1/orders/cancel-all
-```
-
-#### Get Order Status
-```http
-GET /api/v1/orders/{order_id}/status
+GET /api/v1/orders
 ```
 
 ---
 
-### 5. Market Data
+## Wallet Operations
 
-#### List Markets
+### Get Wallet Address
 ```http
-GET /api/v1/markets?limit=50&offset=0&active=true
+GET /api/v1/wallet/address
 ```
 
-**Query Parameters**:
-- `limit` (int, 1-100)
-- `offset` (int)
-- `active` (boolean, optional)
-- `archived` (boolean, optional)
-
-#### Get Market Details
+### Get USDC Balance
 ```http
-GET /api/v1/markets/{token_id}
+GET /api/v1/wallet/balance
 ```
 
-#### Get Order Book
+### Approve Tokens
 ```http
-GET /api/v1/markets/{token_id}/orderbook
-```
-
-Response:
-```json
-{
-  "token_id": "0xabcd...",
-  "bids": [
-    {"price": 0.49, "size": 500},
-    {"price": 0.48, "size": 1000}
-  ],
-  "asks": [
-    {"price": 0.51, "size": 300},
-    {"price": 0.52, "size": 750}
-  ]
-}
-```
-
-#### Get Current Price
-```http
-GET /api/v1/markets/{token_id}/price?side=BUY
-```
-
-Response:
-```json
-{
-  "token_id": "0xabcd...",
-  "side": "BUY",
-  "price": 0.50,
-  "timestamp": "2026-02-12T10:30:00Z"
-}
+POST /api/v1/wallet/approve
 ```
 
 ---
 
-### 6. Trading Limits
+## Positions & Portfolio
 
-Trading limits enforce risk management. Configure via environment variables:
-
-```bash
-ENABLE_TRADING_LIMITS=true
-MAX_ORDER_AMOUNT=1000.0      # Max USD per trade
-MAX_DAILY_VOLUME=10000.0     # Max daily volume USD
-MAX_DAILY_TRADES=100         # Max trades per day
-MAX_POSITION_PER_MARKET=5000.0 # Max position per market
-```
-
-#### Get Current Limits & Usage
+### Get Positions
 ```http
-GET /api/v1/trading/limits
+GET /api/v1/positions
 ```
 
-Response:
-```json
-{
-  "enabled": true,
-  "limits": {
-    "date": "2026-02-12",
-    "max_trade_usd": 1000.0,
-    "max_daily_usd": 10000.0,
-    "daily_volume_used": 2500.0,
-    "daily_volume_remaining": 7500.0,
-    "daily_trades_used": 5,
-    "daily_trades_limit": 100,
-    "position_limit_usd": 5000.0
-  }
-}
-```
-
-#### Check If Trade Is Allowed
+### Get Portfolio Summary
 ```http
-POST /api/v1/trading/can-trade?amount_usd=500&side=BUY
-```
-
-Response:
-```json
-{
-  "allowed": true,
-  "reason": "Trade allowed",
-  "amount_usd": 500.0,
-  "side": "BUY"
-}
-```
-
-#### Get Daily Trading Statistics
-```http
-GET /api/v1/trading/daily-stats
-```
-
-Response:
-```json
-{
-  "date": "2026-02-12",
-  "total_trades": 5,
-  "total_volume_usd": 2500.0,
-  "buy_volume_usd": 1500.0,
-  "sell_volume_usd": 1000.0,
-  "realized_pnl": 100.0
-}
-```
-
----
-
-### 7. Price History & Analysis
-
-#### Get Price History
-```http
-GET /api/v1/markets/{token_id}/price-history?hours=24&interval_minutes=5
-```
-
-**Query Parameters**:
-- `hours` (int, 1-168, default: 24)
-- `interval_minutes` (int, 1-60, default: 5)
-
-Response:
-```json
-{
-  "token_id": "0xabcd...",
-  "hours": 24,
-  "data_points": 288,
-  "history": [
-    {
-      "timestamp": "2026-02-12T10:30:00Z",
-      "price_yes": 0.50,
-      "price_no": 0.50
-    }
-  ],
-  "trend": {
-    "trend": "bullish",
-    "change": 0.02,
-    "change_percent": 4.0,
-    "volatility": 0.01,
-    "direction": "up"
-  }
-}
-```
-
----
-
-### 8. Market Context & Safeguards
-
-#### Get Market Context
-```http
-GET /api/v1/markets/{token_id}/context
-```
-
-Response:
-```json
-{
-  "market": {
-    "question": "Will Bitcoin exceed $100k by end of 2026?",
-    "active": true,
-    "end_date": "2026-12-31T23:59:59Z"
-  },
-  "position": {},
-  "slippage": {
-    "spread": 0.02,
-    "spread_percent": 4.0,
-    "best_bid": 0.49,
-    "best_ask": 0.51,
-    "mid_price": 0.50,
-    "liquidity_rating": "medium"
-  },
-  "trend": {
-    "trend": "bullish",
-    "change_percent": 4.0,
-    "direction": "up"
-  },
-  "warnings": [],
-  "discipline": {
-    "has_position": false,
-    "current_exposure": 0
-  }
-}
-```
-
----
-
-### 9. Price Alerts
-
-#### Create Alert
-```http
-POST /api/v1/alerts
-Content-Type: application/json
-
-{
-  "token_id": "0xabcd...",
-  "side": "yes",
-  "condition": "above",
-  "threshold": 0.70,
-  "webhook_url": "https://your-server.com/webhook"
-}
-```
-
-**Parameters**:
-- `token_id` (string, required): Market token ID
-- `side` (string): `yes` or `no`
-- `condition` (string): `above`, `below`, `crosses_above`, `crosses_below`
-- `threshold` (number, required): Price threshold
-- `webhook_url` (string, optional): URL to call when alert triggers
-
-Response:
-```json
-{
-  "alert_id": "alert_123456",
-  "token_id": "0xabcd...",
-  "side": "yes",
-  "condition": "above",
-  "threshold": 0.70,
-  "active": true,
-  "triggered": false,
-  "created_at": "2026-02-12T10:30:00Z"
-}
-```
-
-#### List Alerts
-```http
-GET /api/v1/alerts?include_triggered=false
-```
-
-#### Delete Alert
-```http
-DELETE /api/v1/alerts/{alert_id}
-```
-
----
-
-### 10. Market Import
-
-Import markets for local tracking and management.
-
-#### Get Importable Markets
-```http
-GET /api/v1/markets/importable?min_volume=10000&limit=50&category=Politics
-```
-
-#### Import a Market
-```http
-POST /api/v1/markets/import
-Content-Type: application/json
-
-{
-  "polymarket_url": "https://polymarket.com/market/will-bitcoin-hit-100k"
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "market_id": "imported_123",
-  "token_id": "0xabcd...",
-  "name": "Will Bitcoin exceed $100k by end of 2026?"
-}
-```
-
-#### Get Imported Markets
-```http
-GET /api/v1/markets/imported
-```
-
-#### Sync Imported Market
-```http
-POST /api/v1/markets/imported/{market_id}/sync
-```
-
----
-
-### 11. Combined Portfolio Summary
-
-Get a complete overview in one call:
-```http
-GET /api/v1/portfolio/summary
-```
-
-Response:
-```json
-{
-  "positions": {
-    "count": 3,
-    "total_value_usd": 500.0,
-    "total_unrealized_pnl": 25.0
-  },
-  "daily_stats": {
-    "date": "2026-02-12",
-    "trades": 5,
-    "volume_usd": 2500.0,
-    "realized_pnl": 100.0
-  },
-  "trading_limits": {...},
-  "imported_markets_count": 10,
-  "active_alerts_count": 3
-}
-```
-
----
-
-### 12. OpenClaw Webhook Integration
-
-#### Trade Webhook (for OpenClaw signals)
-```http
-POST /api/v1/webhook/claw
-X-Webhook-Signature: sha256=...  # Optional, if webhook secret configured
-
-{
-  "token_id": "0xabcd...",
-  "side": "BUY",
-  "amount": 100.0,
-  "price": 0.50,
-  "order_type": "FOK",
-  "webhook_id": "signal_123",
-  "metadata": {"strategy": "momentum"}
-}
-```
-
-Response:
-```json
-{
-  "success": true,
-  "order_id": "uuid-string",
-  "error": null,
-  "timestamp": "2026-02-12T10:30:00Z"
-}
-```
-
-#### Order Status Webhook
-```http
-POST /api/v1/webhook/order-status
-
-{
-  "order_id": "uuid-string",
-  "status": "FILLED"
-}
-```
-
-#### Webhook Health Check
-```http
-GET /api/v1/webhook/health
-```
-
----
-
-### 13. Security Management
-
-#### Get IP Whitelist
-```http
-GET /api/v1/security/whitelist
-```
-
-#### Add IP to Whitelist
-```http
-POST /api/v1/security/whitelist/ip
-
-{
-  "ip": "203.0.113.50",
-  "description": "OpenClaw Server A"
-}
-```
-
-#### Add Network to Whitelist
-```http
-POST /api/v1/security/whitelist/network
-
-{
-  "network": "10.0.0.0/16",
-  "description": "Internal network"
-}
-```
-
-#### Check IP Allowed
-```http
-GET /api/v1/security/whitelist/check/203.0.113.50
-```
-
-#### Add Trusted Proxy
-```http
-POST /api/v1/security/trusted-proxies
-
-{
-  "proxy": "10.0.0.5",
-  "description": "Nginx load balancer"
-}
-```
-
-#### Manage API Keys
-```http
-POST /api/v1/security/api-keys
-
-{
-  "api_key": "sk_live_new_key..."
-}
-
-DELETE /api/v1/security/api-keys
-
-{
-  "api_key": "sk_live_old_key..."
-}
-```
-
-#### Get My IP Info
-```http
-GET /api/v1/security/my-ip
+GET /api/v1/portfolio
 ```
 
 ---
 
 ## Complete Workflow Examples
 
-### Example 1: Basic Trading Flow
+### Example 1: Find and Trade Active Markets
 
 ```python
 import httpx
 
-BASE_URL = "http://server:8000/api/v1"
+BASE_URL = "http://localhost:8000/api/v1"
 
-# 1. Check balance
-balance = httpx.get(f"{BASE_URL}/wallet/balance").json()
-print(f"USDC Balance: {balance['usdc_balance']}")
+# 1. Get active markets sorted by volume
+response = httpx.get(f"{BASE_URL}/markets/active", params={
+    "limit": 10,
+    "order": "volumeNum",
+    "ascending": False,
+    "volume_num_min": 5000  # Minimum $5k volume
+}).json()
 
-# 2. Get market info
-market = httpx.get(f"{BASE_URL}/markets/0xabcd...").json()
-print(f"Current Price: {market['outcome_prices']}")
+print(f"Found {response['total']} active markets")
 
-# 3. Check trading limits
-limits = httpx.get(f"{BASE_URL}/trading/limits").json()
-print(f"Daily remaining: {limits['limits']['daily_volume_remaining']}")
+# 2. Select first high-volume market
+for market in response["markets"][:3]:
+    print(f"\n{market['question'][:60]}...")
+    print(f"  Volume: ${market.get('volume_num', 0):,.2f}")
+    print(f"  Ends: {market.get('end_date', 'N/A')}")
+    
+    # 3. Extract YES token
+    for token in market.get("tokens", []):
+        if token.get("outcome") == "Yes":
+            token_id = token["token_id"]
+            current_price = token["price"]
+            print(f"  YES Price: ${current_price:.2f}")
+            break
+    
+    if token_id:
+        # 4. Place order ($5 minimum)
+        order = httpx.post(f"{BASE_URL}/orders", json={
+            "token_id": token_id,
+            "side": "BUY",
+            "amount": 5.0,  # Minimum!
+            "price": current_price,
+            "order_type": "GTC"
+        }).json()
+        
+        if order.get("success"):
+            print(f"  [ORDER PLACED] {order['order_id']}")
+        else:
+            print(f"  [ORDER FAILED] {order.get('error')}")
+```
 
-# 4. Create order
+### Example 2: Quick Trade - Single Script
+
+```python
+import httpx
+
+BASE_URL = "http://localhost:8000/api/v1"
+
+# Get one active market
+market = httpx.get(f"{BASE_URL}/markets/active", params={
+    "limit": 1,
+    "volume_num_min": 10000
+}).json()["markets"][0]
+
+# Get YES token
+token_id = market["tokens"][0]["token_id"]
+price = market["tokens"][0]["price"]
+
+# Place $5 order
 order = httpx.post(f"{BASE_URL}/orders", json={
-    "token_id": "0xabcd...",
+    "token_id": token_id,
     "side": "BUY",
-    "amount": 100.0,
-    "price": 0.50,
-    "order_type": "FOK"
+    "amount": 5.0,
+    "price": price,
+    "order_type": "GTC"
 }).json()
-print(f"Order ID: {order['order_id']}")
 
-# 5. Check order status
-status = httpx.get(f"{BASE_URL}/orders/{order['order_id']}/status").json()
-print(f"Status: {status}")
+print(f"Order: {order}")
 ```
 
-### Example 2: Automated Trading with Alerts
+### Example 3: Check Order Status
 
 ```python
 import httpx
 
-BASE_URL = "http://server:8000/api/v1"
+BASE_URL = "http://localhost:8000/api/v1"
+ORDER_ID = "0xb6fd72c3207d3035baa5311fb9d5ec1bec098a36e1e02ef4ff81c3cfbbf11c2e"
 
-# 1. Set up price alert
-alert = httpx.post(f"{BASE_URL}/alerts", json={
-    "token_id": "0xabcd...",
-    "side": "yes",
-    "condition": "above",
-    "threshold": 0.75,
-    "webhook_url": "https://your-server.com/alert-callback"
-}).json()
-print(f"Alert created: {alert['alert_id']}")
+# Check specific order
+status = httpx.get(f"{BASE_URL}/orders/{ORDER_ID}").json()
+print(f"Order Status: {status['status']}")
+print(f"Price: {status['price']}")
+print(f"Filled: {status.get('filled_size', '0')}")
 
-# 2. Get market context before trading
-context = httpx.get(f"{BASE_URL}/markets/0xabcd/context").json()
-print(f"Liquidity Rating: {context['slippage']['liquidity_rating']}")
-print(f"Trend: {context['trend']['direction']}")
-
-# 3. Check daily limits
-daily = httpx.get(f"{BASE_URL}/trading/daily-stats").json()
-print(f"Today's trades: {daily['total_trades']}")
-print(f"Volume used: ${daily['total_volume_usd']}")
-
-# 4. Get portfolio summary
-portfolio = httpx.get(f"{BASE_URL}/portfolio/summary").json()
-print(f"Total positions: {portfolio['positions']['count']}")
-```
-
-### Example 3: Market Import and Tracking
-
-```python
-import httpx
-
-BASE_URL = "http://server:8000/api/v1"
-
-# 1. Find importable markets
-markets = httpx.get(f"{BASE_URL}/markets/importable", params={
-    "min_volume": 50000,
-    "limit": 20,
-    "category": "Politics"
-}).json()
-print(f"Found {markets['count']} markets")
-
-# 2. Import a market
-result = httpx.post(f"{BASE_URL}/markets/import", json={
-    "polymarket_url": "https://polymarket.com/market/will-some-event-happen"
-}).json()
-print(f"Imported: {result['market_id']}")
-
-# 3. Get imported markets
-imported = httpx.get(f"{BASE_URL}/markets/imported").json()
-print(f"Total imported: {imported['count']}")
-
-# 4. Sync market data
-synced = httpx.post(f"{BASE_URL}/markets/imported/{result['market_id']}/sync").json()
-print(f"Synced: {synced}")
-```
-
-### Example 4: OpenClaw Integration
-
-```python
-import httpx
-import hmac
-import hashlib
-import json
-
-BASE_URL = "http://server:8000/api/v1"
-WEBHOOK_SECRET = "your_webhook_secret"
-
-def send_webhook(token_id, side, amount, price=None):
-    """Send trade signal to the bot"""
-    payload = {
-        "token_id": token_id,
-        "side": side,
-        "amount": amount,
-        "price": price,
-        "order_type": "FOK"
-    }
-    
-    # Sign the payload
-    signature = hmac.new(
-        WEBHOOK_SECRET.encode(),
-        json.dumps(payload).encode(),
-        hashlib.sha256
-    ).hexdigest()
-    
-    headers = {"X-Webhook-Signature": f"sha256={signature}"}
-    
-    response = httpx.post(
-        f"{BASE_URL}/webhook/claw",
-        json=payload,
-        headers=headers
-    )
-    
-    return response.json()
-
-# Send a buy signal
-result = send_webhook(
-    token_id="0xabcd...",
-    side="BUY",
-    amount=50.0,
-    price=0.45
-)
-print(f"Order placed: {result['order_id']}")
+# Get all open orders
+orders = httpx.get(f"{BASE_URL}/orders").json()
+print(f"\nOpen Orders: {len(orders['orders'])}")
 ```
 
 ---
@@ -822,21 +470,25 @@ print(f"Order placed: {result['order_id']}")
 |------|---------|
 | 200 | Success |
 | 201 | Created |
-| 400 | Bad Request (invalid parameters) |
-| 401 | Unauthorized (missing/invalid API key) |
+| 400 | Bad Request (invalid parameters, amount too small) |
+| 401 | Unauthorized (invalid API credentials) |
 | 403 | Forbidden (IP not whitelisted) |
 | 404 | Not Found |
 | 500 | Internal Server Error |
 
-### Error Response Format
+### Common Errors
 
-```json
-{
-  "error": "Forbidden",
-  "message": "Access denied. Your IP is not whitelisted.",
-  "client_ip": "203.0.113.50"
-}
-```
+**"Size (X) lower than the minimum: 5"**
+→ Increase order amount to at least $5
+
+**"market not found"**
+→ Using wrong ID - use `condition_id` for market details, `token_id` for orders
+
+**"Unauthorized/Invalid api key"**
+→ Credentials not properly derived - restart API to regenerate
+
+**"order is invalid"**
+→ Check price is between 0.01 and 0.99
 
 ---
 
@@ -844,87 +496,79 @@ print(f"Order placed: {result['order_id']}")
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `API_HOST` | `0.0.0.0` | Server bind address |
-| `API_PORT` | `8000` | Server port |
-| `DEBUG` | `false` | Enable debug mode |
-| `LOG_LEVEL` | `INFO` | Logging level |
+```bash
+# Server
+HOST=0.0.0.0
+PORT=8000
+DEBUG=false
+LOG_LEVEL=INFO
 
-### Wallet
+# Wallet (REQUIRED)
+POLYGON_WALLET_PRIVATE_KEY=0x...
 
-| Variable | Description |
-|----------|-------------|
-| `POLYGON_WALLET_PRIVATE_KEY` | Wallet private key (0x prefix) |
-| `WALLET_ADDRESS` | Wallet address (auto-derived if not set) |
+# CLOB Credentials (auto-derived)
+CLOB_API_KEY=
+CLOB_SECRET=
+CLOB_PASS_PHRASE=
 
-### Polymarket API
+# Gamma API
+GAMMA_API_URL=https://gamma-api.polymarket.com
+CLOB_HOST=https://clob.polymarket.com
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `CLOB_HOST` | `https://clob.polymarket.com` | CLOB API URL |
-| `CLOB_API_KEY` | - | API key from Polymarket |
-| `CLOB_SECRET` | - | API secret |
-| `CLOB_PASS_PHRASE` | - | API passphrase |
+# MongoDB (optional)
+MONGODB_URI=mongodb://localhost:27017
 
-### Database
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MONGO_URI` | `mongodb://localhost:27017` | MongoDB connection string |
-| `MONGO_DB_NAME` | `polymarket_trading` | Database name |
-
-### Security
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENABLE_IP_WHITELIST` | `false` | Enable IP filtering |
-| `ALLOWED_IPS` | - | Comma-separated IPs |
-| `ALLOWED_NETWORKS` | - | Comma-separated CIDR |
-| `TRUSTED_PROXIES` | - | Proxy IPs for X-Forwarded-For |
-| `ENABLE_API_KEY_AUTH` | `false` | Enable API key auth |
-| `API_KEYS` | - | Comma-separated API keys |
-
-### Trading Limits
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ENABLE_TRADING_LIMITS` | `false` | Enable trading limits |
-| `MAX_ORDER_AMOUNT` | `1000.0` | Max USD per trade |
-| `MAX_DAILY_VOLUME` | `10000.0` | Max daily volume USD |
-| `MAX_DAILY_TRADES` | `100` | Max trades per day |
-| `MAX_POSITION_PER_MARKET` | `5000.0` | Max position per market |
+# Security
+ENABLE_IP_WHITELIST=false
+ENABLE_API_KEY_AUTH=false
+```
 
 ---
 
-## WebSocket (Future)
+## Quick Reference Card
 
-Real-time updates are available via WebSocket:
+```python
+# Get active markets
+markets = httpx.get("/api/v1/markets/active").json()
 
-```http
-WS /ws
+# Get token_id (from tokens array!)
+token_id = market["tokens"][0]["token_id"]
+
+# Get market details (uses condition_id)
+detail = httpx.get(f"/api/v1/markets/{token_id}").json()
+
+# Place order ($5 minimum!)
+order = httpx.post("/api/v1/orders", json={
+    "token_id": token_id,
+    "side": "BUY",
+    "amount": 5.0,  # MINIMUM!
+    "price": 0.50,
+    "order_type": "GTC"
+}).json()
+
+# Check status
+status = httpx.get(f"/api/v1/orders/{order_id}").json()
+
+# Cancel order
+httpx.delete(f"/api/v1/orders/{order_id}")
 ```
-
-Subscribe to:
-- `orders` - Order updates
-- `trades` - Trade notifications
-- `positions` - Position changes
 
 ---
 
 ## Notes
 
-1. **Token ID Extraction**: Get token ID from Polymarket URL: `https://polymarket.com/market/question?token_id=0xabcd...`
+1. **Token ID Location**: Token IDs are in `market["tokens"][i]["token_id"]`, NOT `market["clob_token_ids"]`
 
-2. **Price Precision**: Prices are between 0.01 and 0.99 (representing percentage)
+2. **Minimum Order**: All orders must be at least $5.00 USD
 
-3. **Amount Units**: All USD amounts are in USDC decimals (e.g., $100 = `100000000` raw)
+3. **Price Format**: Prices are 0.01 to 0.99 (representing 1-99%)
 
-4. **Rate Limiting**: Configurable via `RATE_LIMIT_REQUESTS_PER_MINUTE` and `RATE_LIMIT_BURST`
+4. **API Credentials**: Automatically derived from private key on first run
 
-5. **Database**: MongoDB is used for persistence. Requires `orders`, `trades`, `positions` collections
+5. **Market ID**: Use `condition_id` for market details endpoint
 
-6. **Order Types**:
-   - `FOK` (Fill-or-Kill): Order must fill completely or cancel
-   - `IOC` (Immediate-or-Cancel): Fill what you can, cancel rest
-   - `LIMIT`: Standard limit order
+6. **Date Format**: ISO 8601 UTC (e.g., `2026-12-31T23:59:59Z`)
+
+7. **Restart Required**: After changing `.env`, restart the API
+
+8. **MongoDB Optional**: API works without MongoDB (some caching features disabled)

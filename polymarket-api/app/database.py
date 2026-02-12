@@ -1,6 +1,11 @@
 # Database Connection Management
 """
 MongoDB connection management with Motor async driver
+
+Features:
+- Automatic connection handling
+- Fallback mode when MongoDB is unavailable
+- All operations work without MongoDB (for testing)
 """
 from typing import Optional
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
@@ -15,11 +20,12 @@ logger = get_logger(__name__)
 # MongoDB client instance
 _mongo_client: Optional[AsyncIOMotorClient] = None
 _mongo_db: Optional[AsyncIOMotorDatabase] = None
+_mongo_available: bool = False
 
 
-async def connect_to_mongo() -> None:
-    """Connect to MongoDB"""
-    global _mongo_client, _mongo_db
+async def connect_to_mongo() -> bool:
+    """Connect to MongoDB. Returns True if successful, False otherwise."""
+    global _mongo_client, _mongo_db, _mongo_available
     
     try:
         _mongo_client = AsyncIOMotorClient(
@@ -34,21 +40,30 @@ async def connect_to_mongo() -> None:
         # Create indexes
         await create_indexes()
         
+        _mongo_available = True
         logger.info(f"Connected to MongoDB: {settings.MONGO_DB_NAME}")
+        return True
     except ConnectionFailure as e:
-        logger.error(f"Failed to connect to MongoDB: {e}")
-        raise
+        logger.warning(f"MongoDB not available: {e}")
+        _mongo_available = False
+        return False
 
 
 async def close_mongo_connection() -> None:
     """Close MongoDB connection"""
-    global _mongo_client, _mongo_db
+    global _mongo_client, _mongo_db, _mongo_available
     
     if _mongo_client:
         _mongo_client.close()
         _mongo_client = None
         _mongo_db = None
+        _mongo_available = False
         logger.info("MongoDB connection closed")
+
+
+def is_mongo_available() -> bool:
+    """Check if MongoDB is available"""
+    return _mongo_available
 
 
 async def create_indexes() -> None:
@@ -86,16 +101,16 @@ async def create_indexes() -> None:
         logger.error(f"Failed to create indexes: {e}")
 
 
-def get_db() -> AsyncIOMotorDatabase:
-    """Get MongoDB database instance"""
-    if _mongo_db is None:
-        raise RuntimeError("MongoDB not connected. Call connect_to_mongo() first.")
+def get_db() -> Optional[AsyncIOMotorDatabase]:
+    """Get MongoDB database instance. Returns None if not connected."""
     return _mongo_db
 
 
 def get_collection(collection_name: str):
-    """Get a collection by name"""
+    """Get a collection by name. Returns None if not connected."""
     db = get_db()
+    if db is None:
+        return None
     return db[collection_name]
 
 
@@ -121,15 +136,20 @@ def get_markets_collection():
 
 
 async def save_order(order_data: dict) -> str:
-    """Save an order to the database"""
+    """Save an order to the database. Returns a mock ID if MongoDB unavailable."""
     collection = get_orders_collection()
+    if collection is None:
+        # Return mock ID for testing without MongoDB
+        return "mock_order_" + order_data.get("order_id", "unknown")
     result = await collection.insert_one(order_data)
     return str(result.inserted_id)
 
 
 async def update_order(order_id: str, update_data: dict) -> bool:
-    """Update an order in the database"""
+    """Update an order in the database. Returns False if MongoDB unavailable."""
     collection = get_orders_collection()
+    if collection is None:
+        return False
     result = await collection.update_one(
         {"order_id": order_id},
         {"$set": update_data}
@@ -138,22 +158,28 @@ async def update_order(order_id: str, update_data: dict) -> bool:
 
 
 async def get_order(order_id: str) -> dict:
-    """Get an order by ID"""
+    """Get an order by ID. Returns empty dict if MongoDB unavailable."""
     collection = get_orders_collection()
+    if collection is None:
+        return {}
     order = await collection.find_one({"order_id": order_id})
-    return order
+    return order or {}
 
 
 async def save_trade(trade_data: dict) -> str:
-    """Save a trade to the database"""
+    """Save a trade to the database. Returns a mock ID if MongoDB unavailable."""
     collection = get_trades_collection()
+    if collection is None:
+        return "mock_trade_" + trade_data.get("transaction_hash", "unknown")
     result = await collection.insert_one(trade_data)
     return str(result.inserted_id)
 
 
 async def save_position(position_data: dict) -> None:
-    """Save or update a position"""
+    """Save or update a position. Silent fail if MongoDB unavailable."""
     collection = get_positions_collection()
+    if collection is None:
+        return
     await collection.update_one(
         {"token_id": position_data["token_id"]},
         {"$set": position_data},
@@ -162,14 +188,18 @@ async def save_position(position_data: dict) -> None:
 
 
 async def get_position(token_id: str) -> dict:
-    """Get a position by token ID"""
+    """Get a position by token ID. Returns empty dict if MongoDB unavailable."""
     collection = get_positions_collection()
-    return await collection.find_one({"token_id": token_id})
+    if collection is None:
+        return {}
+    return await collection.find_one({"token_id": token_id}) or {}
 
 
 async def cache_market(market_data: dict) -> None:
-    """Cache market data"""
+    """Cache market data. Silent fail if MongoDB unavailable."""
     collection = get_markets_collection()
+    if collection is None:
+        return
     await collection.update_one(
         {"token_id": market_data["token_id"]},
         {"$set": market_data},
@@ -178,6 +208,8 @@ async def cache_market(market_data: dict) -> None:
 
 
 async def get_cached_market(token_id: str) -> dict:
-    """Get cached market data"""
+    """Get cached market data. Returns empty dict if MongoDB unavailable."""
     collection = get_markets_collection()
-    return await collection.find_one({"token_id": token_id})
+    if collection is None:
+        return {}
+    return await collection.find_one({"token_id": token_id}) or {}
