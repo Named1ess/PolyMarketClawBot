@@ -163,6 +163,10 @@ async def get_order(order_id: str) -> dict:
     if collection is None:
         return {}
     order = await collection.find_one({"order_id": order_id})
+    if order:
+        # Convert ObjectId to string for JSON serialization
+        if "_id" in order:
+            order["_id"] = str(order["_id"])
     return order or {}
 
 
@@ -192,7 +196,11 @@ async def get_position(token_id: str) -> dict:
     collection = get_positions_collection()
     if collection is None:
         return {}
-    return await collection.find_one({"token_id": token_id}) or {}
+    position = await collection.find_one({"token_id": token_id})
+    if position:
+        if "_id" in position:
+            position["_id"] = str(position["_id"])
+    return position or {}
 
 
 async def cache_market(market_data: dict) -> None:
@@ -212,4 +220,8 @@ async def get_cached_market(token_id: str) -> dict:
     collection = get_markets_collection()
     if collection is None:
         return {}
-    return await collection.find_one({"token_id": token_id}) or {}
+    market = await collection.find_one({"token_id": token_id})
+    if market:
+        if "_id" in market:
+            market["_id"] = str(market["_id"])
+    return market or {}

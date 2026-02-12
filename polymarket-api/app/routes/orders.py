@@ -36,6 +36,15 @@ async def list_orders(
     
     collection = get_orders_collection()
     
+    if collection is None:
+        # Return empty list if MongoDB unavailable
+        return OrderListResponse(
+            orders=[],
+            total=0,
+            page=1,
+            page_size=limit
+        )
+    
     # Build query filter
     query = {}
     if status:
@@ -46,6 +55,11 @@ async def list_orders(
     # Fetch orders
     cursor = collection.find(query).sort("created_at", -1).skip(offset).limit(limit)
     orders = await cursor.to_list(length=limit)
+    
+    # Convert ObjectId to string for JSON serialization
+    for order in orders:
+        if "_id" in order:
+            order["_id"] = str(order["_id"])
     
     # Get total count
     total = await collection.count_documents(query)
