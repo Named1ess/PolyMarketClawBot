@@ -1,272 +1,791 @@
 # Polymarket Trading Bot API
 
-A FastAPI-based REST API for Polymarket trading with OpenClaw integration. This API provides endpoints for placing orders, monitoring markets, and tracking trading activity.
+一个基于 FastAPI 的 Polymarket 预测市场交易机器人 API，支持订单管理、市场数据、实时监控、交易限制、OpenClaw 集成等功能。
 
-## Features
+## 📋 目录
 
-- **REST API**: Full CRUD operations for orders, markets, and positions
-- **Real-time Monitoring**: WebSocket support for live trade updates
-- **Market Data**: Fetch events, markets, and order books from Polymarket
-- **Order Management**: Place market/limit orders, cancel orders, track order status
-- **Portfolio Tracking**: Monitor positions and balances
-- **OpenClaw Integration**: Webhook support for automated trading strategies
-- **Async/Non-blocking**: Built with FastAPI and Motor for high performance
+- [功能特性](#功能特性)
+- [快速开始](#快速开始)
+- [安装部署](#安装部署)
+- [配置说明](#配置说明)
+- [API 文档](#api-文档)
+- [使用示例](#使用示例)
+- [安全配置](#安全配置)
+- [Docker 部署](#docker-部署)
+- [项目结构](#项目结构)
 
-## Quick Start
+---
 
-### Prerequisites
+## 🚀 功能特性
 
-- Python 3.9+
-- MongoDB (local or Atlas)
-- Polygon RPC endpoint (Infura, Alchemy, etc.)
-- Polymarket API keys (from https://polymarket.com/settings/keys)
+### 核心功能
+- **REST API** - 完整的订单、市场、持仓 CRUD 操作
+- **异步架构** - 基于 FastAPI 和 Motor，支持高并发
+- **实时监控** - WebSocket 支持，实时推送订单/交易/持仓更新
+- **市场数据** - 从 Polymarket 获取事件、市场深度、价格数据
+- **订单管理** - 市价/限价订单、取消订单、状态追踪
+- **持仓追踪** - 监控仓位、收益、风险敞口
 
-### Installation
+### 高级功能
+- **交易限制** - 单笔限额、每日限额、单市场持仓限制
+- **价格历史** - 获取市场历史价格和趋势分析
+- **市场上下文** - 滑点估算、流动性评级、风险警告
+- **价格警报** - 创建价格提醒，支持 Webhook 回调
+- **市场导入** - 导入 Polymarket 市场进行本地追踪
 
-1. Clone the repository:
+### 集成功能
+- **OpenClaw 集成** - Webhook 支持，接收自动交易信号
+- **IP 白名单** - 限制访问 IP，防止未授权访问
+- **API 密钥认证** - 支持 X-API-Key 认证
+- **MongoDB 持久化** - 存储订单、交易、持仓数据
+
+---
+
+## ⚡ 快速开始
+
+### 前置要求
+
+| 依赖 | 要求 |
+|------|------|
+| Python | 3.9+ |
+| MongoDB | 本地或 Atlas |
+| Polymarket API Key | [申请地址](https://polymarket.com/settings/keys) |
+| Polygon RPC | Infura/Alchemy/Ankr |
+| Polygon 钱包 | 私钥（带 0x 前缀）|
+
+### 5 分钟上手
+
 ```bash
+# 1. 进入项目目录
 cd polymarket-api
-```
 
-2. Create virtual environment:
-```bash
+# 2. 创建虚拟环境
 python -m venv venv
-source venv/bin/activate  # Linux/Mac
-# or
-.\venv\Scripts\activate  # Windows
-```
+# Windows
+.\venv\Scripts\activate
+# Linux/Mac
+source venv/bin/activate
 
-3. Install dependencies:
-```bash
+# 3. 安装依赖
 pip install -r requirements.txt
-```
 
-4. Configure environment:
-```bash
+# 4. 配置环境变量
 cp .env.example .env
-# Edit .env with your configuration
-```
+# 编辑 .env 文件填入你的配置
 
-5. Start MongoDB (if local):
-```bash
-mongod --dbpath /path/to/data/dir
-```
+# 5. 启动 MongoDB（如果使用本地）
+mongod --dbpath /path/to/data
 
-6. Run the API:
-```bash
+# 6. 运行 API
 python main.py
 ```
 
-Or with uvicorn:
+API 将在 `http://localhost:8000` 启动
+
+- **API 文档**: http://localhost:8000/docs
+- **健康检查**: http://localhost:8000/health
+
+---
+
+## 🐳 安装部署
+
+### 本地部署
+
 ```bash
-uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+# 1. 克隆并进入目录
+git clone <repo-url>
+cd polymarket-api
+
+# 2. 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+.\venv\Scripts\activate   # Windows
+
+# 3. 安装依赖
+pip install -r requirements.txt
+
+# 4. 配置环境变量
+cp .env.example .env
+nano .env  # 编辑配置
+
+# 5. 启动服务
+python main.py
 ```
 
-### Docker
+### Docker 部署
 
 ```bash
+# 构建镜像
 docker build -t polymarket-api .
-docker run -p 8000:8000 --env-file .env polymarket-api
+
+# 运行容器
+docker run -d \
+  --name polymarket-api \
+  -p 8000:8000 \
+  --env-file .env \
+  polymarket-api
+
+# 查看日志
+docker logs -f polymarket-api
 ```
 
-## API Endpoints
+### Docker Compose（推荐）
 
-### Health & Status
-- `GET /health` - Health check
-- `GET /status` - System status
+```yaml
+# docker-compose.yml
+version: '3.8'
 
-### Markets
-- `GET /api/v1/markets` - List all markets
-- `GET /api/v1/markets/{token_id}` - Get market details
-- `GET /api/v1/markets/{token_id}/orderbook` - Get order book
-- `GET /api/v1/markets/{token_id}/price` - Get current price
+services:
+  polymarket-api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    depends_on:
+      - mongodb
+    restart: unless-stopped
 
-### Events
-- `GET /api/v1/events` - List all events
-- `GET /api/v1/events/{event_id}` - Get event details
-- `GET /api/v1/events/active` - Get active trading events
+  mongodb:
+    image: mongo:7
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
 
-### Orders
-- `POST /api/v1/orders` - Place a new order
-- `GET /api/v1/orders` - List orders
-- `GET /api/v1/orders/{order_id}` - Get order details
-- `DELETE /api/v1/orders/{order_id}` - Cancel an order
-- `DELETE /api/v1/orders/cancel-all` - Cancel all orders
+volumes:
+  mongodb_data:
+```
 
-### Positions
-- `GET /api/v1/positions` - Get all positions
-- `GET /api/v1/positions/{token_id}` - Get position for specific token
-- `GET /api/v1/portfolio` - Get portfolio summary
+```bash
+docker-compose up -d
+```
 
-### Wallet
-- `GET /api/v1/wallet/balance` - Get USDC balance
-- `GET /api/v1/wallet/address` - Get wallet address
-- `POST /api/v1/wallet/approve` - Set token allowances
+### 生产环境 Nginx 反向代理
 
-### OpenClaw Webhooks
-- `POST /api/v1/webhook/claw` - OpenClaw trade webhook
-- `POST /api/v1/webhook/order-status` - Order status update webhook
+```nginx
+# /etc/nginx/sites-available/polymarket-api
+server {
+    listen 80;
+    server_name your-domain.com;
 
-### WebSocket
-- `WS /ws/orders` - Real-time order updates
-- `WS /ws/trades` - Real-time trade updates
-- `WS /ws/positions` - Real-time position updates
-
-## Usage Examples
-
-### Place a Market Order
-
-```python
-import httpx
-
-# Buy 10 USDC worth of Yes tokens
-response = httpx.post(
-    "http://localhost:8000/api/v1/orders",
-    json={
-        "token_id": "your_token_id",
-        "side": "BUY",
-        "amount": 10.0,
-        "order_type": "FOK"  # Fill Or Kill
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
     }
-)
-print(response.json())
+}
 ```
 
-### Get Market Order Book
+---
 
-```python
-import httpx
+## ⚙️ 配置说明
 
-response = httpx.get(
-    "http://localhost:8000/api/v1/markets/{token_id}/orderbook"
-)
-print(response.json())
-```
-
-### Subscribe to Real-time Trades (WebSocket)
-
-```python
-import asyncio
-import websockets
-
-async def handler():
-    async with websockets.connect("ws://localhost:8000/ws/trades") as ws:
-        while True:
-            message = await ws.recv()
-            print(f"New trade: {message}")
-
-asyncio.run(handler())
-```
-
-### Using with OpenClaw
-
-Configure OpenClaw to send webhooks to:
-```
-http://your-api-server:8000/api/v1/webhook/claw
-```
-
-## Configuration
-
-### Environment Variables
-
-| Variable | Description | Required |
-|----------|------------|----------|
-| `POLYGON_WALLET_PRIVATE_KEY` | Your Polygon wallet private key | Yes |
-| `CLOB_API_KEY` | Polymarket API key | Yes |
-| `CLOB_SECRET` | Polymarket API secret | Yes |
-| `CLOB_PASS_PHRASE` | Polymarket API passphrase | Yes |
-| `MONGO_URI` | MongoDB connection string | Yes |
-| `CHAIN_ID` | Polygon chain ID (137) | No |
-| `RPC_URL` | Polygon RPC endpoint | Yes |
-
-### Trading Limits Configuration
-
-Configure trading limits in your `.env` file to manage risk:
+### 环境变量
 
 ```bash
 # =============================================================================
-# Trading Limits Configuration
+# Server Configuration
 # =============================================================================
+API_HOST=0.0.0.0
+API_PORT=8000
+DEBUG=false
+LOG_LEVEL=INFO
 
-# 单笔交易限制
-MAX_ORDER_AMOUNT=1000.0          # 单笔最大订单金额 (USDC)
-MIN_ORDER_AMOUNT=1.0             # 单笔最小订单金额 (USDC)
+# =============================================================================
+# Wallet Configuration (必需)
+# =============================================================================
+POLYGON_WALLET_PRIVATE_KEY=0x your private key here
 
-# 每日交易限制
-MAX_DAILY_VOLUME=10000.0         # 每日最大交易量 (USDC)
-MAX_DAILY_TRADES=100             # 每日最大交易次数
-MAX_DAILY_LOSS=5000.0            # 每日最大亏损 (USDC)
+# =============================================================================
+# Polymarket API Keys (必需)
+# =============================================================================
+CLOB_API_KEY=your_api_key
+CLOB_SECRET=your_api_secret
+CLOB_PASS_PHRASE=your_api_passphrase
 
-# 市场限制
-MAX_POSITION_PER_MARKET=5000.0    # 单市场最大持仓 (USDC)
-MAX_OPEN_ORDERS_PER_MARKET=10    # 单市场最大挂单数
+# =============================================================================
+# MongoDB Configuration
+# =============================================================================
+MONGO_URI=mongodb://localhost:27017
+MONGO_DB_NAME=polymarket_trading
 
-# 价格保护
-MIN_PRICE=0.01                   # 最小价格
-MAX_PRICE=0.99                   # 最大价格
-PRICE_DEVIATION_THRESHOLD=0.1    # 价格偏离阈值 (10%)
+# =============================================================================
+# Security Configuration
+# =============================================================================
+ENABLE_IP_WHITELIST=false
+ALLOWED_IPS=203.0.113.50,10.0.0.0/16
+TRUSTED_PROXIES=
+ENABLE_API_KEY_AUTH=false
+API_KEYS=sk_live_key1,sk_live_key2
 
-# 风险控制
-ENABLE_TRADING_LIMITS=false       # 是否启用交易限制 (true/false)
-MAX_TOTAL_EXPOSURE=10000.0      # 总最大敞口 (USDC)
+# =============================================================================
+# Trading Limits (可选)
+# =============================================================================
+ENABLE_TRADING_LIMITS=false
+MAX_ORDER_AMOUNT=1000.0
+MAX_DAILY_VOLUME=10000.0
+MAX_DAILY_TRADES=100
+MAX_POSITION_PER_MARKET=5000.0
 ```
 
-**启用限制**: 设置 `ENABLE_TRADING_LIMITS=true` 来启用所有交易限制。
+### 配置获取
 
-**限制检查**: 使用 `/api/v1/trading/limits` 端点查看当前限制状态，
-使用 `/api/v1/trading/can-trade` 检查特定交易是否被允许。
+**Polygon RPC**:
+- [Infura](https://infura.io/) - 免费额度
+- [Alchemy](https://www.alchemy.com/) - 免费额度
+- [Ankr](https://www.ankr.com/) - 公共 RPC 免费
 
-### Token Allowances
+**Polymarket API Keys**:
+1. 登录 https://polymarket.com
+2. 进入 Settings → API Keys
+3. 创建新的 API Key
 
-Before trading, you need to approve token allowances for:
-- USDC contract: `0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174`
-- CTF contract: `0x4D97DCd97eC945f40cF65F87097ACe5EA0476045`
+**MongoDB**:
+- 本地安装: `mongodb://localhost:27017`
+- Atlas 云服务: `mongodb+srv://<user>:<password>@cluster.mongodb.net`
 
-Approve for these exchanges:
-- Main: `0x4bfb41d5b3570defd03c39a9a4d8de6bd8b8982e`
-- Neg Risk: `0xC5d563A36AE78145C45a50134d48A1215220f80a`
-- Neg Risk Adapter: `0xd91E80cF2E7be2e162c6513ceD06f1dD0dA35296`
+---
 
-## Project Structure
+## 📚 API 文档
+
+> Base URL: `http://your-server:8000/api/v1`
+
+### 健康检查
+
+```http
+GET /health
+```
+
+### 钱包操作
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/wallet/address` | GET | 获取钱包地址 |
+| `/wallet/balance` | GET | 获取 USDC 余额 |
+| `/wallet/allowances` | GET | 获取代币授权额度 |
+| `/wallet/approve` | POST | 授权代币交易 |
+
+### 订单管理
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/orders` | POST | 创建订单 |
+| `/orders` | GET | 订单列表 |
+| `/orders/{order_id}` | GET | 订单详情 |
+| `/orders/{order_id}` | DELETE | 取消订单 |
+| `/orders/cancel-all` | DELETE | 取消全部订单 |
+| `/orders/{order_id}/status` | GET | 订单状态 |
+
+**创建订单请求体**:
+```json
+{
+  "token_id": "0x1234...",
+  "side": "BUY",
+  "amount": 100.0,
+  "price": 0.50,
+  "order_type": "FOK"
+}
+```
+
+### 市场数据
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/markets` | GET | 市场列表 |
+| `/markets/{token_id}` | GET | 市场详情 |
+| `/markets/{token_id}/orderbook` | GET | 市场深度 |
+| `/markets/{token_id}/price` | GET | 当前价格 |
+| `/markets/{token_id}/price-history` | GET | 价格历史 |
+| `/markets/{token_id}/context` | GET | 市场上下文 |
+
+### 持仓与资产
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/positions` | GET | 持仓列表 |
+| `/portfolio` | GET | 投资组合汇总 |
+| `/portfolio/summary` | GET | 完整汇总（含统计） |
+
+### 交易限制
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/trading/limits` | GET | 获取限额和已用额度 |
+| `/trading/can-trade` | POST | 检查交易是否允许 |
+| `/trading/daily-stats` | GET | 当日交易统计 |
+
+### 价格警报
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/alerts` | POST | 创建警报 |
+| `/alerts` | GET | 警报列表 |
+| `/alerts/{alert_id}` | DELETE | 删除警报 |
+
+### 市场导入
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/markets/importable` | GET | 可导入市场列表 |
+| `/markets/import` | POST | 导入市场 |
+| `/markets/imported` | GET | 已导入市场 |
+| `/markets/imported/{id}/sync` | POST | 同步市场数据 |
+
+### OpenClaw Webhook
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/webhook/claw` | POST | 交易信号 Webhook |
+| `/webhook/order-status` | POST | 订单状态更新 |
+| `/webhook/health` | GET | Webhook 健康检查 |
+
+### 安全管理
+
+| 端点 | 方法 | 描述 |
+|------|------|------|
+| `/security/whitelist` | GET | IP 白名单 |
+| `/security/whitelist/ip` | POST | 添加 IP |
+| `/security/whitelist/network` | POST | 添加网段 |
+| `/security/trusted-proxies` | GET/POST | 受信任代理 |
+| `/security/api-keys` | POST/DELETE | API 密钥管理 |
+| `/security/my-ip` | GET | 当前 IP 信息 |
+
+---
+
+## 💻 使用示例
+
+### 示例 1: 基本交易流程
+
+```python
+import httpx
+
+BASE_URL = "http://localhost:8000/api/v1"
+
+# 1. 检查钱包余额
+balance = httpx.get(f"{BASE_URL}/wallet/balance").json()
+print(f"USDC 余额: {balance['usdc_balance']}")
+
+# 2. 获取市场信息
+market = httpx.get(f"{BASE_URL}/markets/0xabcd...").json()
+print(f"当前价格: {market['outcome_prices']}")
+
+# 3. 查看交易限制
+limits = httpx.get(f"{BASE_URL}/trading/limits").json()
+print(f"今日剩余: ${limits['limits']['daily_volume_remaining']}")
+
+# 4. 创建订单
+order = httpx.post(f"{BASE_URL}/orders", json={
+    "token_id": "0xabcd...",
+    "side": "BUY",
+    "amount": 100.0,
+    "price": 0.50,
+    "order_type": "FOK"
+}).json()
+print(f"订单 ID: {order['order_id']}")
+
+# 5. 查询订单状态
+status = httpx.get(f"{BASE_URL}/orders/{order['order_id']}/status").json()
+print(f"订单状态: {status}")
+```
+
+### 示例 2: 带警报的交易
+
+```python
+import httpx
+
+BASE_URL = "http://localhost:8000/api/v1"
+
+# 1. 创建价格警报
+alert = httpx.post(f"{BASE_URL}/alerts", json={
+    "token_id": "0xabcd...",
+    "side": "yes",
+    "condition": "above",
+    "threshold": 0.75,
+    "webhook_url": "https://your-server.com/alert-callback"
+}).json()
+print(f"警报已创建: {alert['alert_id']}")
+
+# 2. 交易前查看市场上下文
+context = httpx.get(f"{BASE_URL}/markets/0xabcd/context").json()
+print(f"流动性评级: {context['slippage']['liquidity_rating']}")
+print(f"价格趋势: {context['trend']['direction']}")
+print(f"警告: {context['warnings']}")
+
+# 3. 查看当日统计
+daily = httpx.get(f"{BASE_URL}/trading/daily-stats").json()
+print(f"今日交易: {daily['total_trades']} 笔")
+print(f"今日金额: ${daily['total_volume_usd']}")
+```
+
+### 示例 3: 市场导入与追踪
+
+```python
+import httpx
+
+BASE_URL = "http://localhost:8000/api/v1"
+
+# 1. 查找可导入的高成交量市场
+markets = httpx.get(f"{BASE_URL}/markets/importable", params={
+    "min_volume": 50000,
+    "limit": 20,
+    "category": "Politics"
+}).json()
+print(f"找到 {markets['count']} 个市场")
+
+# 2. 导入市场
+result = httpx.post(f"{BASE_URL}/markets/import", json={
+    "polymarket_url": "https://polymarket.com/market/will-bitcoin-hit-100k"
+}).json()
+print(f"已导入: {result['name']}")
+
+# 3. 查看导入的市场
+imported = httpx.get(f"{BASE_URL}/markets/imported").json()
+print(f"共导入 {imported['count']} 个市场")
+
+# 4. 同步市场数据
+synced = httpx.post(
+    f"{BASE_URL}/markets/imported/{result['market_id']}/sync"
+).json()
+```
+
+### 示例 4: OpenClaw 集成
+
+```python
+import httpx
+import hmac
+import hashlib
+import json
+
+BASE_URL = "http://localhost:8000/api/v1"
+WEBHOOK_SECRET = "your_webhook_secret"
+
+def send_trade_signal(token_id, side, amount, price=None):
+    """发送交易信号到 API"""
+    payload = {
+        "token_id": token_id,
+        "side": side,
+        "amount": amount,
+        "price": price,
+        "order_type": "FOK"
+    }
+    
+    # 签名 payload
+    signature = hmac.new(
+        WEBHOOK_SECRET.encode(),
+        json.dumps(payload).encode(),
+        hashlib.sha256
+    ).hexdigest()
+    
+    headers = {"X-Webhook-Signature": f"sha256={signature}"}
+    
+    response = httpx.post(
+        f"{BASE_URL}/webhook/claw",
+        json=payload,
+        headers=headers
+    )
+    
+    return response.json()
+
+# 发送买入信号
+result = send_trade_signal(
+    token_id="0xabcd...",
+    side="BUY",
+    amount=50.0,
+    price=0.45
+)
+print(f"订单已创建: {result['order_id']}")
+```
+
+### 示例 5: 完整的投资组合概览
+
+```python
+import httpx
+
+BASE_URL = "http://localhost:8000/api/v1"
+
+# 一键获取所有信息
+summary = httpx.get(f"{BASE_URL}/portfolio/summary").json()
+
+print("=== 投资组合概览 ===")
+print(f"持仓数量: {summary['positions']['count']}")
+print(f"持仓总价值: ${summary['positions']['total_value_usd']}")
+print(f"未实现盈亏: ${summary['positions']['total_unrealized_pnl']}")
+
+print("\n=== 今日统计 ===")
+print(f"交易次数: {summary['daily_stats']['trades']}")
+print(f"交易金额: ${summary['daily_stats']['volume_usd']}")
+print(f"已实现盈亏: ${summary['daily_stats']['realized_pnl']}")
+
+print("\n=== 限制状态 ===")
+limits = summary['trading_limits']
+print(f"今日剩余额度: ${limits['daily_volume_remaining']}")
+print(f"可用交易次数: {limits['daily_trades_limit']}")
+
+print("\n=== 其他 ===")
+print(f"导入市场: {summary['imported_markets_count']}")
+print(f"活跃警报: {summary['active_alerts_count']}")
+```
+
+---
+
+## 🔒 安全配置
+
+### IP 白名单
+
+只允许特定 IP 访问 API：
+
+```bash
+# .env 配置
+ENABLE_IP_WHITELIST=true
+ALLOWED_IPS=203.0.113.50,10.0.0.0/16
+TRUSTED_PROXIES=10.0.0.5
+```
+
+### API 密钥认证
+
+```bash
+# .env 配置
+ENABLE_API_KEY_AUTH=true
+API_KEYS=sk_live_key1,sk_live_key2,sk_live_key3
+```
+
+**使用方式**:
+```http
+GET /api/v1/orders HTTP/1.1
+Host: server:8000
+X-API-Key: sk_live_key1
+```
+
+### 反向代理安全
+
+如果使用 Nginx/HAProxy：
+
+```nginx
+# Nginx 配置
+server {
+    listen 80;
+    server_name api.your-domain.com;
+    
+    # 信任代理
+    set_real_ip_from 10.0.0.0/16;
+    real_ip_header X-Real-IP;
+    
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+    }
+}
+```
+
+```bash
+# API .env
+TRUSTED_PROXIES=10.0.0.0/16  # Nginx 服务器 IP
+```
+
+---
+
+## 🐳 Docker 部署
+
+### 构建并运行
+
+```bash
+# 构建镜像
+docker build -t polymarket-api .
+
+# 运行
+docker run -d \
+  --name polymarket-api \
+  -p 8000:8000 \
+  -v $(pwd)/.env:/app/.env \
+  polymarket-api
+
+# 查看日志
+docker logs -f polymarket-api
+
+# 进入容器调试
+docker exec -it polymarket-api bash
+```
+
+### Docker Compose（完整部署）
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: polymarket-api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  mongodb:
+    image: mongo:7
+    container_name: polymarket-mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+
+volumes:
+  mongodb_data:
+```
+
+```bash
+# 启动所有服务
+docker-compose up -d
+
+# 查看状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+
+# 停止
+docker-compose down
+```
+
+### Kubernetes 部署
+
+```yaml
+# k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: polymarket-api
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: polymarket-api
+  template:
+    metadata:
+      labels:
+        app: polymarket-api
+    spec:
+      containers:
+      - name: api
+        image: polymarket-api:latest
+        ports:
+        - containerPort: 8000
+        envFrom:
+        - secretRef:
+            name: polymarket-secrets
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: polymarket-api
+spec:
+  selector:
+    app: polymarket-api
+  ports:
+  - port: 80
+    targetPort: 8000
+```
+
+---
+
+## 📁 项目结构
 
 ```
 polymarket-api/
-├── main.py                    # FastAPI application entry point
+├── main.py                      # 应用入口
+├── skill.md                     # AI Agent 技能文档
+├── README.md                    # 本文档
+├── .env.example                 # 环境变量模板
+├── requirements.txt             # Python 依赖
+├── Dockerfile                   # Docker 配置
+├── docker-compose.yml           # Docker Compose 配置
+│
 ├── app/
 │   ├── __init__.py
-│   ├── main.py               # FastAPI app factory
-│   ├── config.py             # Configuration management
-│   ├── models/              # Pydantic data models
+│   ├── main.py                  # FastAPI 应用工厂
+│   ├── config.py                # 配置管理（Pydantic Settings）
+│   │
+│   ├── middleware/
 │   │   ├── __init__.py
-│   │   ├── orders.py        # Order-related models
-│   │   ├── markets.py       # Market/Event models
-│   │   └── user.py          # User/Position models
-│   ├── clients/             # API clients
+│   │   └── security.py          # IP 白名单、API Key 中间件
+│   │
+│   ├── models/                  # Pydantic 数据模型
 │   │   ├── __init__.py
-│   │   ├── polymarket.py    # Polymarket CLOB client
-│   │   ├── gamma.py         # Gamma API client
-│   │   └── wallet.py        # Wallet/Web3 client
-│   ├── services/            # Business logic
+│   │   ├── orders.py            # 订单相关模型
+│   │   ├── markets.py           # 市场/事件模型
+│   │   └── user.py              # 用户/持仓模型
+│   │
+│   ├── clients/                 # 外部 API 客户端
 │   │   ├── __init__.py
-│   │   ├── order_service.py # Order management
-│   │   ├── market_service.py# Market data
-│   │   └── monitor.py       # Trade monitoring
-│   ├── routes/              # API routes
+│   │   ├── polymarket.py        # Polymarket CLOB 客户端
+│   │   ├── gamma.py             # Gamma API 客户端
+│   │   └── wallet.py            # Web3 钱包客户端
+│   │
+│   ├── services/                # 业务逻辑层
 │   │   ├── __init__.py
-│   │   ├── orders.py        # Order endpoints
-│   │   ├── markets.py       # Market endpoints
-│   │   ├── wallet.py        # Wallet endpoints
-│   │   └── webhook.py       # Webhook endpoints
-│   └── utils/               # Utilities
+│   │   ├── order_service.py     # 订单服务
+│   │   ├── market_service.py    # 市场数据服务
+│   │   ├── monitor.py           # 实时监控服务
+│   │   ├── advanced.py          # 高级功能服务
+│   │   └── market_import.py     # 市场导入服务
+│   │
+│   ├── routes/                  # API 路由
+│   │   ├── __init__.py
+│   │   ├── health.py            # 健康检查
+│   │   ├── markets.py           # 市场端点
+│   │   ├── events.py            # 事件端点
+│   │   ├── orders.py            # 订单端点
+│   │   ├── wallet.py            # 钱包端点
+│   │   ├── webhook.py           # Webhook 端点
+│   │   ├── websocket.py         # WebSocket 端点
+│   │   ├── advanced.py          # 高级功能端点
+│   │   └── security.py          # 安全配置端点
+│   │
+│   ├── database.py              # MongoDB 连接管理
+│   └── utils/
 │       ├── __init__.py
-│       ├── logger.py        # Logging setup
-│       └── helpers.py       # Helper functions
-├── tests/                    # Unit tests
-├── .env.example              # Environment template
-├── requirements.txt         # Dependencies
-└── Dockerfile              # Docker configuration
+│       └── logger.py            # 日志配置
+│
+└── tests/                        # 测试文件
 ```
 
-## License
+---
+
+## ⚠️ 注意事项
+
+1. **API Key 安全**: 不要将 API Key 提交到版本控制
+2. **私钥安全**: 使用环境变量存储私钥，不要硬编码
+3. **网络选择**: 确保 Polygon RPC 和网络连接稳定
+4. **Gas 费用**: Polymarket 交易需要 MATIC 作为 Gas
+5. **Token ID**: 从 Polymarket URL 获取，如 `polymarket.com/market/xxx?token_id=0x...`
+
+---
+
+## 📄 许可证
 
 MIT License
+
+---
+
+## 🤝 贡献
+
+欢迎提交 Issue 和 Pull Request！
