@@ -32,12 +32,9 @@ _executor = ThreadPoolExecutor(max_workers=4)
 
 
 def _run_sync(func, *args, **kwargs):
-    """Run sync function in thread pool executor"""
-    loop = asyncio.new_event_loop()
-    try:
-        return loop.run_in_executor(None, lambda: func(*args, **kwargs)).result()
-    finally:
-        loop.close()
+    """Run sync function in thread pool executor - without asyncio"""
+    future = _executor.submit(func, *args, **kwargs)
+    return future.result(timeout=30)
 
 
 class PolymarketClient:
@@ -53,22 +50,30 @@ class PolymarketClient:
         self._init_client()
 
     def _init_client(self):
-        """Initialize client with proper authentication"""
-        # Get credentials from settings
-        api_key = settings.CLOB_API_KEY
-        api_secret = settings.CLOB_SECRET
-        api_passphrase = settings.CLOB_PASS_PHRASE
+        """Initialize client with proper authentication - following Polymarket docs"""
+        # First, create client with just private key (Level 1)
+        self.client = ClobClient(
+            self.host,
+            key=self.private_key,
+            chain_id=self.chain_id
+        )
+        logger.info("Initialized client with private key (Level 1)")
 
-        # Initialize with credentials if available
-        if api_key and api_secret and api_passphrase:
-            try:
-                creds = ApiCreds(
-                    api_key=api_key,
-                    api_secret=api_secret,
-                    api_passphrase=api_passphrase
-                )
-
-                # Initialize with full Level 2 auth
+        # Try to derive API credentials from private key
+        try:
+            logger.info("Deriving API credentials from private key...")
+            creds = _run_sync(self.client.create_or_derive_api_creds)
+            
+            if creds:
+                logger.info(f"API credentials derived successfully")
+                logger.info(f"  API Key: {creds.api_key[:10]}...")
+                
+                # Save credentials to settings/log
+                settings.CLOB_API_KEY = creds.api_key
+                settings.CLOB_SECRET = creds.api_secret
+                settings.CLOB_PASS_PHRASE = creds.api_passphrase
+                
+                # Re-initialize client with credentials for Level 2 auth
                 self.client = ClobClient(
                     self.host,
                     key=self.private_key,
@@ -77,25 +82,13 @@ class PolymarketClient:
                     signature_type=self.signature_type,
                     funder=self.wallet_address
                 )
-                logger.info("Initialized with static API credentials (Level 2)")
-
-            except Exception as e:
-                logger.warning(f"Failed to initialize with static credentials: {e}")
-                # Fall back to Level 1
-                self.client = ClobClient(
-                    self.host,
-                    key=self.private_key,
-                    chain_id=self.chain_id
-                )
-                logger.info("Initialized with private key only (Level 1)")
-        else:
-            # No static credentials, use private key only
-            self.client = ClobClient(
-                self.host,
-                key=self.private_key,
-                chain_id=self.chain_id
-            )
-            logger.info("Initialized with private key only (Level 1)")
+                logger.info("Re-initialized client with API credentials (Level 2)")
+            else:
+                logger.warning("Failed to derive API credentials - creds is None")
+                
+        except Exception as e:
+            logger.error(f"Failed to derive API credentials: {e}")
+            logger.info("Continuing with Level 1 authentication only")
 
     async def get_markets(self, limit: int = 10) -> List[Dict[str, Any]]:
         """Get list of markets"""
@@ -163,17 +156,20 @@ class PolymarketClient:
             logger.error(f"Error fetching order {order_id}: {e}")
             return {}
 
-    def _create_order_sync(self, token_id: str, side: str, amount: float, price: Optional[float], order_type: str, tick_size: str, neg_risk: bool) -> Dict[str, Any]:
-        """Synchronous order creation helper"""
+    def _create_and_post_order_sync(self, token_id: str, side: str, amount: float, price: Optional[float], tick_size: str, neg_risk: bool) -> Dict[str, Any]:
+        """
+        Synchronous order creation and posting
+        Uses the correct flow: create_order -> post_order
+        """
         side_enum = BUY if side.upper() == "BUY" else SELL
 
-        # Build order
+        # Build order arguments
         if price is None:
             order_args = MarketOrderArgs(
                 token_id=token_id,
                 amount=amount,
                 side=side_enum,
-                order_type=order_type
+                order_type="GTC"
             )
         else:
             order_args = OrderArgs(
@@ -183,16 +179,21 @@ class PolymarketClient:
                 side=side_enum
             )
 
+        # Create order options
         options = PartialCreateOrderOptions(
             tick_size=tick_size,
             neg_risk=neg_risk
         )
 
-        # Create order
+        # Step 1: Create and sign the order (Level 1 auth)
+        logger.info("Creating order...")
         order = self.client.create_order(order_args, options)
+        logger.info(f"Order created: {order is not None}")
 
-        # Post order
+        # Step 2: Post the order to the order book (Level 2 auth required)
+        logger.info("Posting order to orderbook...")
         response = self.client.post_order(order, OrderType.GTC)
+        logger.info(f"Order posted response: {response}")
 
         return response
 
@@ -218,23 +219,25 @@ class PolymarketClient:
             condition_id: Market condition ID (from market["condition_id"])
         """
         try:
-            # Get market info using condition_id (NOT token_id!)
+            # Get tick_size and neg_risk from market
             tick_size = "0.01"
             neg_risk = False
+            
             if condition_id:
                 try:
                     market = _run_sync(self.client.get_market, condition_id)
                     if market:
                         tick_size = market.get("tickSize", "0.01")
                         neg_risk = market.get("negRisk", False)
-                        logger.info(f"Got market details: tick_size={tick_size}, neg_risk={neg_risk}")
+                        logger.info(f"Market details: tick_size={tick_size}, neg_risk={neg_risk}")
                 except Exception as e:
                     logger.warning(f"Failed to get market details: {e}")
 
             # Create and post order
+            logger.info(f"Placing order: token={token_id[:20]}..., amount={amount}, price={price}")
             response = _run_sync(
-                self._create_order_sync,
-                token_id, side, amount, price, order_type, tick_size, neg_risk
+                self._create_and_post_order_sync,
+                token_id, side, amount, price, tick_size, neg_risk
             )
 
             logger.info(f"Order response: {response}")
@@ -248,15 +251,18 @@ class PolymarketClient:
                     "timestamp": datetime.utcnow().isoformat()
                 }
             else:
+                error_msg = response.get('errorMsg', '') if response else 'No response'
                 return {
                     "success": False,
-                    "error": f"Order failed: {response}",
+                    "error": f"Order failed: {error_msg}",
                     "response": response,
                     "timestamp": datetime.utcnow().isoformat()
                 }
 
         except Exception as e:
             logger.error(f"Error placing order: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             return {
                 "success": False,
                 "error": str(e),
