@@ -32,10 +32,13 @@ class MarketResponse(BaseModel):
     spread: Optional[float] = None
     rewards_min_size: Optional[float] = None
     rewards_max_spread: Optional[float] = None
-    clob_token_ids: List[str]
+    clob_token_ids: List[str] = []
+    # Token details for trading
+    tokens: List[dict] = []
+    condition_id: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
-    
+
     class Config:
         from_attributes = True
 

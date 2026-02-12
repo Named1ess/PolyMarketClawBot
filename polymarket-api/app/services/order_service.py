@@ -28,6 +28,7 @@ class OrderService:
             # Place order on Polymarket
             result = await polymarket_client.place_order(
                 token_id=request.token_id,
+                condition_id=request.condition_id,
                 side=request.side.value,
                 amount=request.amount,
                 price=request.price,

@@ -36,11 +36,12 @@ class OrderStatus(str, Enum):
 
 class OrderRequest(BaseModel):
     """Request model for creating an order"""
-    token_id: str = Field(..., description="Market token ID")
+    token_id: str = Field(..., description="Market token ID (from market['tokens'][i]['token_id'])")
+    condition_id: Optional[str] = Field(None, description="Market condition ID (from market['condition_id'])")
     side: OrderSide = Field(..., description="Order side (BUY/SELL)")
-    amount: float = Field(..., gt=0, description="Amount in USDC for BUY, tokens for SELL")
-    price: Optional[float] = Field(None, ge=0, le=1, description="Limit price (0-1). Required for LIMIT orders.")
-    order_type: OrderType = Field(default=OrderType.FOK, description="Order type")
+    amount: float = Field(..., gt=0, description="Amount in USDC (minimum $5)")
+    price: Optional[float] = Field(None, ge=0, le=1, description="Limit price (0-1). Required for LIMIT/GTC orders.")
+    order_type: OrderType = Field(default=OrderType.GTC, description="Order type (GTC, FOK, LIMIT)")
     nonce: Optional[str] = Field(None, description="Custom nonce for order identification")
 
 
