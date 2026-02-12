@@ -116,3 +116,29 @@ class TradeListResponse(BaseModel):
     """Response for listing trades"""
     trades: List[TradeResponse]
     total: int
+
+
+class OrderBookEntry(BaseModel):
+    """Single order book entry"""
+    price: float
+    size: float
+    side: str  # BUY/SELL
+
+
+class OrderBookResponse(BaseModel):
+    """Order book response"""
+    market_id: str
+    token_id: str
+    bids: List[OrderBookEntry]
+    asks: List[OrderBookEntry]
+    spread: Optional[float] = None
+    mid_price: Optional[float] = None
+
+
+class PriceResponse(BaseModel):
+    """Price information for a market"""
+    token_id: str
+    outcome: str
+    price: float
+    change_24h: Optional[float] = None
+    volume_24h: Optional[float] = None
