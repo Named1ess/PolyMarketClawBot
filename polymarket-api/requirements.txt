@@ -7,7 +7,7 @@ uvicorn[standard]==0.27.0
 python-dotenv==1.0.0
 
 # Web3 and Blockchain
-web3==6.15.1
+web3==5.31.4
 py_clob_client==0.34.5
 
 # Database
