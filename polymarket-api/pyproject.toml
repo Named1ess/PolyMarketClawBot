@@ -1,0 +1,30 @@
+[tool.poetry]
+name = "polymarket-api"
+version = "0.1.0"
+description = "FastAPI-based REST API for Polymarket trading"
+authors = ["OpenClaw"]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+fastapi = "^0.109.0"
+uvicorn = {extras = ["standard"], version = "^0.27.0"}
+python-dotenv = "^1.0.0"
+web3 = "^7.0.0"
+py-clob-client = "^0.34.5"
+motor = "^3.3.2"
+pymongo = "^4.6.1"
+httpx = "^0.26.0"
+aiohttp = "^3.9.1"
+websockets = "^13.0"
+pydantic = "^2.5.3"
+pydantic-settings = "^2.1.0"
+python-multipart = "^0.0.6"
+tenacity = "^8.2.3"
+python-json-logger = "^2.0.7"
+structlog = "^24.1.0"
+pytest = "^7.4.4"
+pytest-asyncio = "^0.23.3"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
