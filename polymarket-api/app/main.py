@@ -13,7 +13,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.utils.logger import setup_logging, get_logger
 from app.database import connect_to_mongo, close_mongo_connection
-from app.routes import health_router, markets_router, events_router, orders_router, wallet_router, webhook_router, websocket_router, advanced_router
+from app.routes import health_router, markets_router, events_router, orders_router, wallet_router, webhook_router, websocket_router, advanced_router, security_router
+from app.middleware.security import IPWhitelistMiddleware, APIKeyMiddleware
 
 # Setup logging
 setup_logging()
@@ -63,6 +64,16 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     
+    # Security middleware - Add IP whitelist if enabled
+    if settings.ENABLE_IP_WHITELIST:
+        logger.info("IP Whitelist enabled")
+        app.add_middleware(IPWhitelistMiddleware)
+    
+    # Security middleware - Add API key auth if enabled
+    if settings.ENABLE_API_KEY_AUTH:
+        logger.info("API Key authentication enabled")
+        app.add_middleware(APIKeyMiddleware)
+    
     # Include routers
     app.include_router(health_router, prefix="")
     app.include_router(markets_router, prefix="/api/v1")
@@ -71,6 +82,7 @@ def create_app() -> FastAPI:
     app.include_router(wallet_router, prefix="/api/v1")
     app.include_router(webhook_router, prefix="/api/v1")
     app.include_router(advanced_router, prefix="/api/v1")
+    app.include_router(security_router, prefix="/api/v1")
     app.include_router(websocket_router)
     
     return app

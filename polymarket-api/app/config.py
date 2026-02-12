@@ -77,6 +77,20 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUESTS_PER_MINUTE: int = 60
     RATE_LIMIT_BURST: int = 10
     
+    # Security Configuration
+    # IP Whitelist - Comma-separated IPs or CIDR networks
+    # Example: "192.168.1.100,10.0.0.0/16"
+    ALLOWED_IPS: str = ""
+    ALLOWED_NETWORKS: str = ""
+    
+    # API Keys for authentication - Comma-separated keys
+    # Example: "sk_live_key1,sk_live_key2"
+    API_KEYS: str = ""
+    
+    # Enable/disable security features
+    ENABLE_IP_WHITELIST: bool = False
+    ENABLE_API_KEY_AUTH: bool = False
+    
     @field_validator("WALLET_ADDRESS", mode="before")
     @classmethod
     def derive_wallet_address(cls, v, info):
