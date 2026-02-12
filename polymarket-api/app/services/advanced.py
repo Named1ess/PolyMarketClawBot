@@ -16,11 +16,21 @@ logger = get_logger(__name__)
 
 @dataclass
 class TradeLimit:
-    """Trading limit configuration"""
+    """Trading limit configuration - loaded from settings"""
     max_trade_usd: float = 100.0  # Maximum USD per trade
     max_daily_usd: float = 500.0  # Maximum USD per day
     max_position_usd: Optional[float] = None  # Maximum position size
     max_daily_trades: Optional[int] = None  # Maximum trades per day
+    
+    @classmethod
+    def from_settings(cls) -> "TradeLimit":
+        """Create TradeLimit from settings configuration"""
+        return cls(
+            max_trade_usd=getattr(settings, 'MAX_ORDER_AMOUNT', 1000.0),
+            max_daily_usd=getattr(settings, 'MAX_DAILY_VOLUME', 10000.0),
+            max_daily_trades=getattr(settings, 'MAX_DAILY_TRADES', 100),
+            max_position_usd=getattr(settings, 'MAX_POSITION_PER_MARKET', 5000.0)
+        )
 
 
 @dataclass
@@ -39,8 +49,14 @@ class TradingLimitsService:
     """Service for managing trading limits and restrictions"""
     
     def __init__(self, limits: Optional[TradeLimit] = None):
-        self.limits = limits or TradeLimit()
+        self.limits = limits or TradeLimit.from_settings()
         self._today_stats: Optional[DailyStats] = None
+        self._enabled = getattr(settings, 'ENABLE_TRADING_LIMITS', False)
+    
+    @property
+    def is_enabled(self) -> bool:
+        """Check if trading limits are enabled"""
+        return self._enabled
     
     def get_daily_stats(self, reload: bool = False) -> DailyStats:
         """Get today's trading statistics"""
@@ -110,6 +126,10 @@ class TradingLimitsService:
         Returns:
             (allowed, reason)
         """
+        # If limits are disabled, always allow
+        if not self.is_enabled:
+            return True, "Trading limits disabled"
+        
         stats = self.get_daily_stats()
         
         # Check trade amount limit

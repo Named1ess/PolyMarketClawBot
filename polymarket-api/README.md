@@ -179,6 +179,43 @@ http://your-api-server:8000/api/v1/webhook/claw
 | `CHAIN_ID` | Polygon chain ID (137) | No |
 | `RPC_URL` | Polygon RPC endpoint | Yes |
 
+### Trading Limits Configuration
+
+Configure trading limits in your `.env` file to manage risk:
+
+```bash
+# =============================================================================
+# Trading Limits Configuration
+# =============================================================================
+
+# 单笔交易限制
+MAX_ORDER_AMOUNT=1000.0          # 单笔最大订单金额 (USDC)
+MIN_ORDER_AMOUNT=1.0             # 单笔最小订单金额 (USDC)
+
+# 每日交易限制
+MAX_DAILY_VOLUME=10000.0         # 每日最大交易量 (USDC)
+MAX_DAILY_TRADES=100             # 每日最大交易次数
+MAX_DAILY_LOSS=5000.0            # 每日最大亏损 (USDC)
+
+# 市场限制
+MAX_POSITION_PER_MARKET=5000.0    # 单市场最大持仓 (USDC)
+MAX_OPEN_ORDERS_PER_MARKET=10    # 单市场最大挂单数
+
+# 价格保护
+MIN_PRICE=0.01                   # 最小价格
+MAX_PRICE=0.99                   # 最大价格
+PRICE_DEVIATION_THRESHOLD=0.1    # 价格偏离阈值 (10%)
+
+# 风险控制
+ENABLE_TRADING_LIMITS=false       # 是否启用交易限制 (true/false)
+MAX_TOTAL_EXPOSURE=10000.0      # 总最大敞口 (USDC)
+```
+
+**启用限制**: 设置 `ENABLE_TRADING_LIMITS=true` 来启用所有交易限制。
+
+**限制检查**: 使用 `/api/v1/trading/limits` 端点查看当前限制状态，
+使用 `/api/v1/trading/can-trade` 检查特定交易是否被允许。
+
 ### Token Allowances
 
 Before trading, you need to approve token allowances for:

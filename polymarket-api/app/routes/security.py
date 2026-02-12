@@ -3,7 +3,7 @@
 Security administration endpoints for IP whitelist and API keys
 """
 from typing import Optional
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends
 from pydantic import BaseModel
 
 from app.middleware.security import ip_whitelist, api_key_auth, get_client_ip

@@ -39,7 +39,16 @@ class UpdateLimitsRequest(BaseModel):
 @advanced_router.get("/trading/limits")
 async def get_trading_limits():
     """Get current trading limits and usage"""
-    return trading_limits_service.get_remaining_limits()
+    return {
+        "enabled": trading_limits_service.is_enabled,
+        "limits": trading_limits_service.get_remaining_limits(),
+        "config": {
+            "max_trade_usd": trading_limits_service.limits.max_trade_usd,
+            "max_daily_usd": trading_limits_service.limits.max_daily_usd,
+            "max_position_usd": trading_limits_service.limits.max_position_usd,
+            "max_daily_trades": trading_limits_service.limits.max_daily_trades,
+        }
+    }
 
 
 @advanced_router.get("/trading/daily-stats")

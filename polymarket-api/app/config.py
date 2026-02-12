@@ -66,6 +66,26 @@ class Settings(BaseSettings):
     FETCH_INTERVAL: int = 1
     TOO_OLD_TIMESTAMP: int = 24
     
+    # Trading Limits Configuration
+    # Enable/disable trading limits
+    ENABLE_TRADING_LIMITS: bool = False
+    
+    # Maximum order amount in USD per trade
+    # Example: 1000.0
+    MAX_ORDER_AMOUNT: float = 1000.0
+    
+    # Maximum daily trading volume in USD
+    # Example: 10000.0
+    MAX_DAILY_VOLUME: float = 10000.0
+    
+    # Maximum number of trades per day
+    # Example: 100 (set to None for unlimited)
+    MAX_DAILY_TRADES: Optional[int] = 100
+    
+    # Maximum position size per market in USD
+    # Example: 5000.0 (set to None for unlimited)
+    MAX_POSITION_PER_MARKET: Optional[float] = 5000.0
+    
     # Retry Settings
     RETRY_LIMIT: int = 3
     NETWORK_RETRY_LIMIT: int = 3
@@ -82,6 +102,11 @@ class Settings(BaseSettings):
     # Example: "192.168.1.100,10.0.0.0/16"
     ALLOWED_IPS: str = ""
     ALLOWED_NETWORKS: str = ""
+    
+    # Trusted Proxies - Only trust X-Forwarded-For from these IPs/CIDR
+    # Example: "10.0.0.1,172.16.0.0/16" (Your Nginx/Proxy IPs)
+    # SECURITY: Only set this if you're behind a reverse proxy!
+    TRUSTED_PROXIES: str = ""
     
     # API Keys for authentication - Comma-separated keys
     # Example: "sk_live_key1,sk_live_key2"
